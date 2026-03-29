@@ -1,0 +1,48 @@
+# --- Python / venv ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / npm ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json.bak
+
+# --- Electron ---
+out/
+release/
+dist-electron/
+*.asar
+# electron-builder cache / artefakty
+.electron-builder-cache/
+app-builds/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Sekrety (opcjonalnie dopasuj do backendu) ---
+.env
+.env.local
+.env.*.local
