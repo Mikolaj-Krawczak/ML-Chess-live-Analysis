@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import "./App.css";
 
 const API = "http://localhost:8000";
@@ -70,29 +70,35 @@ function Thermometer({
         <span className="label-white">♙ Białe</span>
       </div>
 
-      <div className="thermo-bar" aria-label="Ocena pozycji">
+      <div
+        className="thermo-bar"
+        aria-label="Ocena pozycji"
+        style={
+          {
+            "--thermo-black-pct": `${blackPercent}%`,
+            "--thermo-white-pct": `${whitePercent}%`,
+            "--thermo-split-bottom": `${whitePercent}%`,
+            "--thermo-split-left": `${100 - whitePercent}%`,
+          } as CSSProperties
+        }
+      >
         <div
           className="thermo-black"
           style={{
-            height: `${blackPercent}%`,
             transition: loading
               ? "none"
-              : "height 0.6s cubic-bezier(0.34,1.56,0.64,1)",
+              : "height 0.65s cubic-bezier(0.34,1.56,0.64,1), width 0.65s cubic-bezier(0.34,1.56,0.64,1)",
           }}
         />
         <div
           className="thermo-white"
           style={{
-            height: `${whitePercent}%`,
             transition: loading
               ? "none"
-              : "height 0.6s cubic-bezier(0.34,1.56,0.64,1)",
+              : "height 0.65s cubic-bezier(0.34,1.56,0.64,1), width 0.65s cubic-bezier(0.34,1.56,0.64,1)",
           }}
         />
-        <div
-          className="thermo-divider"
-          style={{ bottom: `${whitePercent}%` }}
-        />
+        <div className="thermo-divider" />
       </div>
 
       <div
@@ -172,7 +178,7 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <main className="app">
       <header className="header">
         <h1>
           Chess <span>Vision</span>
@@ -229,9 +235,19 @@ export default function App() {
             <span className="label-black">♟ Czarne</span>
             <span className="label-white">♙ Białe</span>
           </div>
-          <div className="thermo-bar" style={{ opacity: 0.2 }}>
-            <div className="thermo-black" style={{ height: "50%" }} />
-            <div className="thermo-white" style={{ height: "50%" }} />
+          <div
+            className="thermo-bar thermo-bar--placeholder"
+            style={
+              {
+                "--thermo-black-pct": "50%",
+                "--thermo-white-pct": "50%",
+                "--thermo-split-bottom": "50%",
+                "--thermo-split-left": "50%",
+              } as CSSProperties
+            }
+          >
+            <div className="thermo-black" />
+            <div className="thermo-white" />
           </div>
         </div>
       )}
@@ -260,6 +276,6 @@ export default function App() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
