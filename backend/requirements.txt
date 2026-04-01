@@ -1,3 +1,7 @@
-# FastAPI + serwer ASGI — wersje doprecyzujesz przy pierwszym pip install -r
-fastapi
-uvicorn[standard]
+
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-chess==1.999
+pydantic==2.7.4
+python-dotenv==1.0.1

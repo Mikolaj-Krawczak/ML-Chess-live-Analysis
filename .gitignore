@@ -42,6 +42,9 @@ app-builds/
 .DS_Store
 Thumbs.db
 
+# --- Stockfish (binaria pobrane lokalnie — nie wersjonujemy) ---
+stockfish/
+
 # --- Sekrety (opcjonalnie dopasuj do backendu) ---
 .env
 .env.local
