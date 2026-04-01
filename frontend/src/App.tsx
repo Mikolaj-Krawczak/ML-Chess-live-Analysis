@@ -275,21 +275,42 @@ export default function App() {
           </div>
 
           <div className="control-group">
-            <label className="control-label" htmlFor="strength-mode">
+            <span className="control-label" id="strength-mode-label">
               Siła silnika
-            </label>
-            <select
-              id="strength-mode"
-              className="control-select"
-              value={strengthMode}
-              onChange={(e) =>
-                setStrengthMode(e.target.value as StrengthMode)
-              }
+            </span>
+            <div
+              className="strength-toggle"
+              role="group"
+              aria-labelledby="strength-mode-label"
             >
-              <option value="full">Pełna siła (domyślnie)</option>
-              <option value="elo">Limit Elo (UCI_Elo, 1320–3190)</option>
-              <option value="skill">Skill Level (0–20)</option>
-            </select>
+              <button
+                type="button"
+                className={`strength-toggle__btn${strengthMode === "full" ? " strength-toggle__btn--active" : ""}`}
+                onClick={() => setStrengthMode("full")}
+                aria-pressed={strengthMode === "full"}
+              >
+                Pełna siła
+              </button>
+              <button
+                type="button"
+                className={`strength-toggle__btn${strengthMode === "elo" ? " strength-toggle__btn--active" : ""}`}
+                onClick={() => setStrengthMode("elo")}
+                aria-pressed={strengthMode === "elo"}
+              >
+                Limit Elo
+              </button>
+              <button
+                type="button"
+                className={`strength-toggle__btn${strengthMode === "skill" ? " strength-toggle__btn--active" : ""}`}
+                onClick={() => setStrengthMode("skill")}
+                aria-pressed={strengthMode === "skill"}
+              >
+                Skill 0–20
+              </button>
+            </div>
+            <p className="control-hint">
+              Elo: UCI 1320–3190 · Skill: skala Stockfish, 20 = max.
+            </p>
           </div>
 
           {strengthMode === "elo" && (

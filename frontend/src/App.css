@@ -252,27 +252,59 @@ textarea:focus {
   margin: 0;
 }
 
-.control-select {
-  width: 100%;
-  min-height: 2.85rem;
-  padding: 0.5rem 0.85rem;
-  font-family: var(--font-ui);
-  font-size: var(--step--1);
-  color: var(--text);
+/* Przełącznik siły silnika (segmented control) */
+.strength-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.35rem;
   background: var(--surface-muted);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
+}
+
+.strength-toggle__btn {
+  flex: 1 1 auto;
+  min-width: min(100%, 6.5rem);
+  min-height: 2.65rem;
+  padding: 0.5rem 0.65rem;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-sm) - 4px);
   cursor: pointer;
-  outline: none;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
-.control-select:hover,
-.control-select:focus {
-  border-color: var(--border-strong);
+.strength-toggle__btn:hover {
+  color: var(--text);
+  background: rgba(212, 175, 88, 0.08);
 }
 
-.control-select:focus-visible {
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.strength-toggle__btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.strength-toggle__btn--active {
+  color: var(--black-clr);
+  background: linear-gradient(165deg, var(--gold-bright) 0%, var(--gold) 100%);
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 10px rgba(212, 175, 88, 0.25);
+}
+
+.strength-toggle__btn--active:hover {
+  color: var(--black-clr);
+  background: linear-gradient(165deg, #f5e0a8 0%, var(--gold-bright) 100%);
 }
 
 .analysis-controls input[type="range"] {
