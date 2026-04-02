@@ -272,6 +272,48 @@ export default function App() {
         >
           {showBestMove ? "⟵ Ukryj strzałkę" : "⟶ Pokaż najlepszy ruch"}
         </button>
+
+        {/* Info pod szachownicą: kolej i najlepszy ruch */}
+        <div className="board-info">
+          {result ? (
+            <>
+              <div className="board-info-card">
+                <div className="bic-label">Kolej</div>
+                <div className="bic-val bic-val--turn">
+                  {result.turn === "white" ? (
+                    <>
+                      <span className="bic-piece bic-piece--plate-light" aria-hidden>
+                        ♟
+                      </span>
+                      <span>Białe</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="bic-piece bic-piece--plate-dark" aria-hidden>
+                        ♙
+                      </span>
+                      <span>Czarne</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="board-info-card">
+                <div className="bic-label">Najlepszy ruch</div>
+                <div className="bic-val bic-val--move">
+                  {result.best_move ? (
+                    <span className="move-arrow">{result.best_move}</span>
+                  ) : (
+                    <span className="move-none">—</span>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="board-info-placeholder">
+              Wykonaj analizę, aby zobaczyć szczegóły pozycji.
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="input-panel">
@@ -462,31 +504,7 @@ export default function App() {
       )}
 
       <div className="info-cards">
-        {result ? (
-          <>
-            <div className="info-card">
-              <div className="ic-label">Kolej</div>
-              <div className="ic-val ic-val--turn">
-                {result.turn === "white" ? (
-                  <>
-                    <span className="ic-piece ic-piece--plate-light" aria-hidden>
-                      ♟
-                    </span>
-                    <span>Białe</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="ic-piece ic-piece--plate-dark" aria-hidden>
-                      ♙
-                    </span>
-                    <span>Czarne</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <BestMoveDisplay move={result.best_move} />
-          </>
-        ) : (
+        {!result && (
           <div className="empty-state">
             Wklej FEN i kliknij <strong>Analizuj</strong> lub naciśnij{" "}
             <strong>Enter</strong>.
