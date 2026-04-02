@@ -194,6 +194,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showBestMove, setShowBestMove] = useState(true);
+  const [boardOrientation, setBoardOrientation] = useState<"white" | "black">(
+    "white"
+  );
   const [boardWidth, setBoardWidth] = useState(400);
   const boardColRef = useRef<HTMLDivElement>(null);
   const [depth, setDepth] = useState(DEFAULT_DEPTH);
@@ -263,15 +266,29 @@ export default function App() {
           bestMove={result?.best_move ?? null}
           showBestMove={showBestMove}
           boardWidth={boardWidth}
+          boardOrientation={boardOrientation}
         />
-        <button
-          type="button"
-          className={`arrow-toggle${showBestMove ? " arrow-toggle--active" : ""}`}
-          onClick={() => setShowBestMove((v) => !v)}
-          aria-pressed={showBestMove}
-        >
-          {showBestMove ? "⟵ Ukryj strzałkę" : "⟶ Pokaż najlepszy ruch"}
-        </button>
+        <div className="board-toolbar">
+          <button
+            type="button"
+            className={`arrow-toggle${showBestMove ? " arrow-toggle--active" : ""}`}
+            onClick={() => setShowBestMove((v) => !v)}
+            aria-pressed={showBestMove}
+          >
+            {showBestMove ? "⟵ Ukryj strzałkę" : "⟶ Pokaż najlepszy ruch"}
+          </button>
+          <button
+            type="button"
+            className={`board-orient-toggle${boardOrientation === "black" ? " board-orient-toggle--active" : ""}`}
+            onClick={() =>
+              setBoardOrientation((o) => (o === "white" ? "black" : "white"))
+            }
+            aria-pressed={boardOrientation === "black"}
+            title="Obrót planszy o 180° (perspektywa białych / czarnych)"
+          >
+            ↻ Obróć planszę (180°)
+          </button>
+        </div>
 
         {/* Info pod szachownicą: kolej i najlepszy ruch */}
         <div className="board-info">
@@ -458,6 +475,7 @@ export default function App() {
               setStrengthMode("full");
               setEloLimit(DEFAULT_ELO);
               setSkillLevel(DEFAULT_SKILL);
+              setBoardOrientation("white");
             }}
           >
             Reset
