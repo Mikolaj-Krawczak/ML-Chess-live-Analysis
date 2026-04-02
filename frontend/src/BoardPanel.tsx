@@ -34,7 +34,7 @@ export default function BoardPanel({
     if (!showBestMove || !bestMove || bestMove.length < 4) return [];
     const from = bestMove.slice(0, 2);
     const to = bestMove.slice(2, 4);
-    return [{ startSquare: from, endSquare: to, color: "rgba(240, 215, 140, 0.75)" }];
+    return [{ startSquare: from, endSquare: to, color: "#111111" }];
   }, [showBestMove, bestMove]);
 
   if (!isValidFen) {
@@ -57,14 +57,14 @@ export default function BoardPanel({
           allowDrawingArrows: false,
           arrows,
           arrowOptions: {
-            color: "rgba(240, 215, 140, 0.75)",
+            color: "#111111",
             secondaryColor: "rgba(79, 168, 120, 0.65)",
             tertiaryColor: "rgba(232, 168, 124, 0.65)",
             arrowLengthReducerDenominator: 3.2,
             sameTargetArrowLengthReducerDenominator: 1.8,
             arrowWidthDenominator: 12,
             activeArrowWidthMultiplier: 1.2,
-            opacity: 0.85,
+            opacity: 1,
             activeOpacity: 1,
             arrowStartOffset: 0.3,
           },
