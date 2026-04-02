@@ -1,0 +1,6 @@
+# pydantic<2.10: brak wheela pydantic-core dla Python 3.13 → pip próbuje budować z Rusta
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-chess==1.999
+pydantic==2.11.7
+python-dotenv==1.0.1
