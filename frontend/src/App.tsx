@@ -52,6 +52,8 @@ interface ThermometerProps {
   scoreType: "cp" | "mate";
   mateIn: number | null;
   loading: boolean;
+  /** Zgodnie z widokiem szachownicy: od czarnych — czarna strefa termometru na dole. */
+  boardOrientation: "white" | "black";
 }
 
 // Termometr: 0% = czarne, 100% = białe (skala ok. ±10 pionów)
@@ -60,6 +62,7 @@ function Thermometer({
   scoreType,
   mateIn,
   loading,
+  boardOrientation,
 }: ThermometerProps) {
   const CAP = 10;
   const rawPercent =
@@ -76,8 +79,11 @@ function Thermometer({
   const advantage =
     score > 0.2 ? "white" : score < -0.2 ? "black" : "equal";
 
+  const fromBlack =
+    boardOrientation === "black" ? " thermo-wrap--from-black" : "";
+
   return (
-    <div className="thermo-wrap">
+    <div className={`thermo-wrap${fromBlack}`}>
       <div className="thermo-labels">
         <span className="thermo-label thermo-label--black">
           <span className="thermo-piece" aria-hidden>
@@ -100,8 +106,6 @@ function Thermometer({
           {
             "--thermo-black-pct": `${blackPercent}%`,
             "--thermo-white-pct": `${whitePercent}%`,
-            "--thermo-split-bottom": `${whitePercent}%`,
-            "--thermo-split-left": `${100 - whitePercent}%`,
           } as CSSProperties
         }
       >
@@ -121,13 +125,12 @@ function Thermometer({
               : "height 0.65s cubic-bezier(0.34,1.56,0.64,1), width 0.65s cubic-bezier(0.34,1.56,0.64,1)",
           }}
         />
-        <div className="thermo-divider" />
-      </div>
-
-      <div
-        className={`score-badge score-${advantage} ${loading ? "pulse" : ""}`}
-      >
-        {loading ? "…" : label}
+        <div
+          className={`thermo-score-overlay thermo-score-overlay--${advantage} ${loading ? "pulse" : ""}`}
+          aria-live="polite"
+        >
+          {loading ? "…" : label}
+        </div>
       </div>
     </div>
   );
@@ -501,9 +504,12 @@ export default function App() {
           scoreType={result.score_type}
           mateIn={result.mate_in}
           loading={loading}
+          boardOrientation={boardOrientation}
         />
       ) : (
-        <div className="thermo-wrap">
+        <div
+          className={`thermo-wrap${boardOrientation === "black" ? " thermo-wrap--from-black" : ""}`}
+        >
           <div className="thermo-labels">
             <span className="thermo-label thermo-label--black">
               <span className="thermo-piece" aria-hidden>
@@ -524,8 +530,6 @@ export default function App() {
               {
                 "--thermo-black-pct": "50%",
                 "--thermo-white-pct": "50%",
-                "--thermo-split-bottom": "50%",
-                "--thermo-split-left": "50%",
               } as CSSProperties
             }
           >
@@ -534,21 +538,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      <div className="info-cards">
-        {!result && (
-          <div className="empty-state">
-            Wklej FEN i kliknij <strong>Analizuj</strong> lub naciśnij{" "}
-            <strong>Enter</strong>.
-            <br />
-            <br />
-            Przykład startowej pozycji jest już wpisany.
-            <br />
-            <br />
-            FEN możesz skopiować z Lichess, Chess.com lub wygenerować ręcznie.
-          </div>
-        )}
-      </div>
     </main>
   );
 }

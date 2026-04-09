@@ -98,7 +98,7 @@ body {
   grid-template-areas:
     "head  head  head"
     "board in    thermo"
-    "board info  thermo";
+    "board in    thermo";
   align-items: start;
   position: relative;
 }
@@ -327,7 +327,7 @@ body {
 }
 
 .bic-val--move {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-weight: 700;
   color: var(--gold-bright);
 }
@@ -460,9 +460,9 @@ textarea:focus {
 }
 
 .control-value {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: var(--step-1);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gold-bright);
   min-width: 2.5rem;
   text-align: right;
@@ -652,74 +652,6 @@ button.reset-btn:focus-visible {
   line-height: 1.5;
 }
 
-/* ——— Karty informacji ——— */
-.info-cards {
-  grid-area: info;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  position: relative;
-  z-index: 1;
-}
-
-.info-card {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: clamp(1rem, 2.5vw, 1.35rem);
-}
-
-.info-card .ic-label {
-  font-size: var(--step--1);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin-bottom: 0.35rem;
-}
-
-.info-card .ic-val {
-  font-size: var(--step-1);
-  font-weight: 500;
-  color: var(--text);
-}
-
-.ic-val--turn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.ic-piece {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: clamp(2.2rem, 5.5vw, 2.75rem);
-  height: clamp(2.2rem, 5.5vw, 2.75rem);
-  border-radius: 50%;
-  font-size: clamp(1.2rem, 3vw, 1.55rem);
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.ic-piece--plate-dark {
-  background: linear-gradient(155deg, #2f2b28 0%, #12100f 100%);
-  color: #f7f4ed;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
-}
-
-.ic-piece--plate-light {
-  background: linear-gradient(165deg, #fffefb 0%, #ddd5c8 100%);
-  color: #0c0b0a;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.25),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.06);
-}
-
 /* ——— Termometr ——— */
 .thermo-wrap {
   grid-area: thermo;
@@ -759,6 +691,15 @@ button.reset-btn:focus-visible {
 
 .thermo-label--white {
   order: 2;
+}
+
+/* Perspektywa czarnych: jak na obróconej szachownicy — czarne u dołu termometru */
+.thermo-wrap--from-black .thermo-labels {
+  flex-direction: column-reverse;
+}
+
+.thermo-wrap--from-black .thermo-bar {
+  flex-direction: column-reverse;
 }
 
 /* ♙/♟ na ciemnym tle: zamiana + pełne tło pod glifem (Unicode „biały” bywa przezroczysty) */
@@ -812,16 +753,107 @@ button.reset-btn:focus-visible {
   width: clamp(4rem, 12vw, 5.5rem);
   height: clamp(18rem, 48vh, 26rem);
   max-height: 420px;
-  border-radius: 999px;
+  border-radius: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
-  border: 3px solid var(--border-strong);
+  /* Pełne złoto — widać na czerni i na bieli; półprzezroczysty border zlewał się z ciemnym segmentem */
+  border: 2px solid var(--gold-bright);
   box-shadow:
     inset 0 2px 14px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
     0 8px 28px rgba(0, 0, 0, 0.4);
+}
+
+/* Wynik — na zewnętrznej górze lub podstawie wykresu (nie przy styku kolorów) */
+.thermo-score-overlay {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  box-sizing: border-box;
+  pointer-events: none;
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2.8vw, 1.65rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1.1;
+  text-align: center;
+  padding: 0.3rem 0.55rem;
+}
+
+/* „+” jest węższe niż cyfry — lekkie przesunięcie w lewo, żeby margines wyglądał symetrycznie */
+.thermo-score-overlay--white,
+.thermo-score-overlay--black {
+  transform: translateX(-0.06em);
+}
+
+/* Przewaga białych — segment u dołu: liczba przy podstawie wykresu */
+.thermo-score-overlay--white {
+  bottom: 0;
+  inset-inline: 0;
+  width: 100%;
+  height: var(--thermo-white-pct, 50%);
+  top: auto;
+  place-items: end center;
+  color: #0d0c0b;
+  text-shadow:
+    0 0 12px rgba(255, 255, 255, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Przewaga czarnych — segment u góry: liczba przy szczycie wykresu */
+.thermo-score-overlay--black {
+  top: 0;
+  inset-inline: 0;
+  width: 100%;
+  height: var(--thermo-black-pct, 50%);
+  bottom: auto;
+  place-items: start center;
+  color: #f7f4ed;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.85),
+    0 0 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Równowaga: plakietka na środku paska */
+.thermo-score-overlay--equal {
+  left: 50%;
+  top: 50%;
+  transform: translate(calc(-50% - 0.06em), -50%);
+  width: min(5.5rem, calc(100% - 1rem));
+  height: auto;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.55rem;
+  place-items: center;
+  place-content: center;
+  border-radius: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(240, 215, 140, 0.92) 0%,
+    rgba(200, 165, 90, 0.95) 100%
+  );
+  color: #1f180c;
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: none;
+}
+
+/* Widok od czarnych: biel u góry wykresu (szczyt), czerń u dołu (podstawa) */
+.thermo-wrap--from-black .thermo-score-overlay--white {
+  top: 0;
+  bottom: auto;
+  height: var(--thermo-white-pct, 50%);
+  place-items: start center;
+}
+
+.thermo-wrap--from-black .thermo-score-overlay--black {
+  bottom: 0;
+  top: auto;
+  height: var(--thermo-black-pct, 50%);
+  place-items: end center;
 }
 
 .thermo-bar--placeholder {
@@ -841,51 +873,6 @@ button.reset-btn:focus-visible {
   height: var(--thermo-white-pct, 50%);
   width: 100%;
   flex-shrink: 0;
-}
-
-.thermo-divider {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 3px;
-  bottom: var(--thermo-split-bottom, 50%);
-  top: auto;
-  background: linear-gradient(90deg, transparent, var(--gold-bright), transparent);
-  opacity: 0.95;
-  transform: translateY(50%);
-  box-shadow: 0 0 14px rgba(240, 215, 140, 0.45);
-}
-
-.score-badge {
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 4vw, 2.35rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  padding: 0.55rem 1.15rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface-elevated);
-  border: 2px solid var(--border);
-  min-width: clamp(6.5rem, 18vw, 8.5rem);
-  text-align: center;
-  box-shadow: var(--shadow-sm);
-}
-
-.score-white {
-  color: var(--adv-white);
-  border-color: rgba(126, 224, 184, 0.35);
-  background: rgba(45, 90, 74, 0.35);
-}
-
-.score-black {
-  color: var(--adv-black);
-  border-color: rgba(232, 168, 124, 0.35);
-  background: rgba(90, 50, 35, 0.25);
-}
-
-.score-equal {
-  color: var(--equal);
-  border-color: rgba(212, 175, 88, 0.4);
-  background: var(--gold-dim);
 }
 
 .pulse {
@@ -922,26 +909,11 @@ button.reset-btn:focus-visible {
 }
 
 .move-arrow {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: var(--step-2);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gold-bright);
-  letter-spacing: 0.06em;
-}
-
-/* ——— Pusty stan ——— */
-.empty-state {
-  color: var(--text-dim);
-  font-size: var(--step-0);
-  line-height: 1.75;
-  background: var(--surface-muted);
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: clamp(1.15rem, 3vw, 1.65rem);
-}
-
-.empty-state strong {
-  color: var(--text);
+  letter-spacing: 0.04em;
 }
 
 /* ——— Tablet / wąski desktop (brak 3 kolumn) ——— */
@@ -953,8 +925,7 @@ button.reset-btn:focus-visible {
       "head"
       "board"
       "thermo"
-      "in"
-      "info";
+      "in";
   }
 
   .board-col {
@@ -984,13 +955,21 @@ button.reset-btn:focus-visible {
     order: unset;
   }
 
+  .thermo-wrap--from-black .thermo-labels {
+    flex-direction: row-reverse;
+  }
+
+  .thermo-wrap--from-black .thermo-bar {
+    flex-direction: row-reverse;
+  }
+
   .thermo-bar {
     width: min(100%, 28rem);
     height: clamp(4.75rem, 15vw, 6.25rem);
     max-height: none;
     flex-direction: row;
     align-items: stretch;
-    border-radius: 999px;
+    border-radius: 0;
   }
 
   .thermo-black {
@@ -1005,19 +984,35 @@ button.reset-btn:focus-visible {
     flex: 0 0 auto;
   }
 
-  .thermo-divider {
-    width: 3px;
+  /* Poziomy pasek: zewnętrzne końce (prawy = „podstawa”, lewy = „góra” przy domyślnym układzie) */
+  .thermo-score-overlay--white {
+    inset-block: 0;
+    inset-inline: auto 0;
+    width: var(--thermo-white-pct, 50%);
     height: 100%;
-    top: 0;
-    bottom: 0;
-    left: var(--thermo-split-left, 50%);
-    right: auto;
-    transform: translateX(-50%);
+    place-items: center end;
   }
 
-  .score-badge {
-    width: 100%;
-    max-width: 20rem;
+  .thermo-score-overlay--black {
+    inset-block: 0;
+    inset-inline: 0 auto;
+    width: var(--thermo-black-pct, 50%);
+    height: 100%;
+    place-items: center start;
+  }
+
+  .thermo-wrap--from-black .thermo-score-overlay--white {
+    inset-inline: 0 auto;
+    place-items: center start;
+  }
+
+  .thermo-wrap--from-black .thermo-score-overlay--black {
+    inset-inline: auto 0;
+    place-items: center end;
+  }
+
+  .thermo-score-overlay--equal {
+    width: min(12rem, 88%);
   }
 }
 
