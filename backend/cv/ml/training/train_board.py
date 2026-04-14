@@ -37,7 +37,7 @@ from pathlib import Path
 
 EPOCHS      = 50      # liczba epok; więcej = lepszy model, dłuższy trening
 IMG_SIZE    = 640     # rozmiar wejścia sieci (640 = standard YOLOv8)
-BATCH       = 8       # batch size; zmniejsz do 4-6 jeśli brakuje RAM/VRAM
+BATCH       = 4      # batch size; zmniejsz do 4-6 jeśli brakuje RAM/VRAM
 PATIENCE    = 15      # early stopping — zatrzymaj jeśli brak poprawy przez N epok
 PRETRAINED  = "yolov8n.pt"  # punkt startowy: nano model z Ultralytics Hub
 
