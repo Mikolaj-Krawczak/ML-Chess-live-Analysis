@@ -33,6 +33,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Router CV (Computer Vision) ---
+# Import po definicji app żeby uniknąć circular import
+
+from cv.router import router as cv_router, on_startup  # noqa: E402
+
+app.include_router(cv_router)
+
+
+@app.on_event("startup")
+def _startup():
+    """Ładuje kalibrację szachownicy i modele ML przy starcie serwera."""
+    on_startup()
+
 # --- Ścieżka do Stockfisha: .env (STOCKFISH_PATH) lub domyślna lokalizacja w repozytorium ---
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
