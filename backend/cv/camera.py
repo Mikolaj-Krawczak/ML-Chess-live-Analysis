@@ -46,12 +46,17 @@ def fetch_snapshot() -> np.ndarray:
     return frame
 
 
-def frame_to_base64(frame: np.ndarray, quality: int = 85) -> str:
-    """Koduje obraz BGR do łańcucha base64 JPEG."""
+def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = 85) -> bytes:
+    """Koduje obraz BGR do surowych bajtów JPEG."""
     ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not ok:
         raise RuntimeError("Nie udało się zakodować obrazu do JPEG.")
-    return base64.b64encode(buf.tobytes()).decode("utf-8")
+    return buf.tobytes()
+
+
+def frame_to_base64(frame: np.ndarray, quality: int = 85) -> str:
+    """Koduje obraz BGR do łańcucha base64 JPEG."""
+    return base64.b64encode(frame_to_jpeg_bytes(frame, quality)).decode("utf-8")
 
 
 def is_camera_reachable() -> bool:
