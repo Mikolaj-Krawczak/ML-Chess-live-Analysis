@@ -126,21 +126,26 @@ class MoveDetector:
         board = game_state.get_board_copy()
         move_uci, reason = move_inference.infer_move(self._before, after, board)
 
-        self._before = after
         self._state = DetectorState.IDLE
         self._stable_count = 0
 
         if move_uci is None:
-            logger.warning("Nie rozpoznano ruchu: %s", reason)
+            # Nie aktualizujemy _before — zachowujemy poprzedni dobry stan.
+            # Dzięki temu zakłócenie (cień, szum CNN) nie psuje kolejnych detekcji.
+            logger.warning("Nie rozpoznano ruchu: %s — _before bez zmian.", reason)
             return FrameResult(state="IDLE", move_detected=False,
                                reason=reason, occupied_now=list(after))
 
         try:
             game_state.push(move_uci)
         except ValueError as exc:
+            # Ruch UCI wykryty, ale nielegalny — też nie aktualizujemy _before.
             logger.error("Push ruchu %s nie powiódł się: %s", move_uci, exc)
             return FrameResult(state="IDLE", move_detected=False,
                                reason=str(exc), occupied_now=list(after))
+
+        # Tylko przy zatwierdzonym, legalnym ruchu aktualizujemy bazę porównawczą.
+        self._before = after
 
         fen = game_state.get_fen()
         logger.info("Ruch zatwierdzony: %s | FEN: %s", move_uci, fen)
