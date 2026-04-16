@@ -151,7 +151,18 @@ def train() -> None:
 
     # Model, loss, optimizer
     model = _build_model().to(device)
-    criterion = nn.BCELoss()     # Binary Cross Entropy — dla wyjścia Sigmoid
+
+    # Wyliczamy pos_weight automatycznie z datasetu — wyrównuje nierówne klasy.
+    # Jeśli empty=24000, occupied=9500 → pos_weight ≈ 2.5
+    # W każdym batchu próbki occupied będą ważone 2.5x mocniej niż empty.
+    n_occ = sum(1 for _, l in train_loader.dataset.dataset.samples if l == 1)
+    n_emp = sum(1 for _, l in train_loader.dataset.dataset.samples if l == 0)
+    pos_weight_val = n_emp / max(n_occ, 1)
+    pos_weight = torch.tensor([pos_weight_val], device=device)
+    logger.info("pos_weight: %.3f (empty=%d / occupied=%d)", pos_weight_val, n_emp, n_occ)
+
+    # BCELoss bez redukcji — ręcznie aplikujemy wagi per próbka
+    criterion = nn.BCELoss(reduction="none")
     optimizer = optim.Adam(
         model.parameters(),
         lr=cfg["learning_rate"],
@@ -191,7 +202,9 @@ def train() -> None:
 
             optimizer.zero_grad()
             outputs = model(inputs)         # (batch, 1)
-            loss = criterion(outputs, labels)
+            # Wagi per próbka: occupied → pos_weight, empty → 1.0
+            sample_weights = torch.where(labels == 1, pos_weight, torch.ones_like(labels))
+            loss = (criterion(outputs, labels) * sample_weights).mean()
             loss.backward()
             optimizer.step()
 
@@ -220,7 +233,7 @@ def train() -> None:
             for inputs, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs, labels).mean()
                 val_loss += loss.item() * inputs.size(0)
                 preds = (outputs > 0.5).float()
                 val_correct += (preds == labels).sum().item()

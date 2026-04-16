@@ -47,11 +47,6 @@ def _build_pipeline():
                 contrast_limit=0.35,
                 p=0.8,
             ),
-            # Szum matrycy CMOS kamery
-            A.GaussNoise(
-                var_limit=(5.0, 30.0),
-                p=0.5,
-            ),
             # Blur = delikatny ruch / niska ostrość
             A.GaussianBlur(
                 blur_limit=(3, 5),

@@ -49,3 +49,9 @@ stockfish/
 .env
 .env.local
 .env.*.local
+
+# --- CV / ML datasets (lokalne dane treningowe) ---
+backend/cv/ml/data/dataset/
+backend/cv/ml/data/**/*.jpg
+backend/cv/ml/data/**/*.jpeg
+backend/cv/ml/data/**/*.png
