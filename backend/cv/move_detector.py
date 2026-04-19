@@ -54,6 +54,7 @@ class MoveDetector:
     def __init__(self) -> None:
         self._state = DetectorState.IDLE
         self._before: set[str] = set()
+        self._before_image: Optional[np.ndarray] = None  # obraz klatki 'before'
         self._candidate: set[str] = set()
         self._stable_count: int = 0
 
@@ -64,13 +65,16 @@ class MoveDetector:
         self._candidate = set()
         if warped is not None:
             self._before = board_occupancy.get_occupied_squares(warped)
+            self._before_image = warped.copy()
             logger.info("Detektor uruchomiony. Before: %d pól.", len(self._before))
         else:
             self._before = set()
+            self._before_image = None
 
     def reset_to_idle(self, warped: np.ndarray) -> None:
         """Wraca do IDLE i aktualizuje 'before' z bieżącej klatki."""
         self._before = board_occupancy.get_occupied_squares(warped)
+        self._before_image = warped.copy()
         self._state = DetectorState.IDLE
         self._stable_count = 0
         self._candidate = set()
@@ -81,12 +85,13 @@ class MoveDetector:
 
         if not self._before:
             self._before = current
+            self._before_image = warped.copy()
             return FrameResult(state="IDLE", reason="Inicjalizacja before.", occupied_now=list(current))
 
         if self._state == DetectorState.IDLE:
             return self._handle_idle(current)
         if self._state == DetectorState.IN_MOVE:
-            return self._handle_in_move(current)
+            return self._handle_in_move(current, warped)
 
         return FrameResult(state=self._state.name, occupied_now=list(current))
 
@@ -100,7 +105,7 @@ class MoveDetector:
         logger.debug("Wykryto zmianę planszy → IN_MOVE.")
         return FrameResult(state="IN_MOVE", reason="Wykryto zmianę.", occupied_now=list(current))
 
-    def _handle_in_move(self, current: set[str]) -> FrameResult:
+    def _handle_in_move(self, current: set[str], warped: np.ndarray) -> FrameResult:
         if current == self._candidate:
             self._stable_count += 1
         else:
@@ -119,12 +124,16 @@ class MoveDetector:
                 occupied_now=list(current),
             )
 
-        return self._finalize_move(current)
+        return self._finalize_move(current, warped)
 
-    def _finalize_move(self, after: set[str]) -> FrameResult:
+    def _finalize_move(self, after: set[str], after_image: np.ndarray) -> FrameResult:
         """Plansza ustabilizowała się — inferujemy ruch i aktualizujemy Board."""
         board = game_state.get_board_copy()
-        move_uci, reason = move_inference.infer_move(self._before, after, board)
+        move_uci, reason = move_inference.infer_move(
+            self._before, after, board,
+            before_image=self._before_image,
+            after_image=after_image,
+        )
 
         self._state = DetectorState.IDLE
         self._stable_count = 0
@@ -146,6 +155,7 @@ class MoveDetector:
 
         # Tylko przy zatwierdzonym, legalnym ruchu aktualizujemy bazę porównawczą.
         self._before = after
+        self._before_image = after_image.copy()
 
         fen = game_state.get_fen()
         logger.info("Ruch zatwierdzony: %s | FEN: %s", move_uci, fen)
