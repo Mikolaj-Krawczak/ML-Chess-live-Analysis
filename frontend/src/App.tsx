@@ -30,6 +30,13 @@ const DEFAULT_DEPTH = 18;
 const DEFAULT_ELO = 1500;
 const DEFAULT_SKILL = 10;
 
+// A6: odstęp między kolejnymi tickami (łańcuchowo — dopiero po zakończeniu poprzedniego)
+const LIVE_POLL_INTERVAL_MS = 500;
+
+// A8: niższa głębokość dla auto-analizy po ruchu z kamery
+// Manualne "Analizuj" nadal korzysta z ustawienia użytkownika (do 24)
+const LIVE_EVAL_DEPTH = 12;
+
 type StrengthMode = "full" | "elo" | "skill";
 
 /** Odpowiedź z backendu FastAPI /evaluate (EvalResponse) */
@@ -224,7 +231,10 @@ export default function App() {
   const [detectorRunning, setDetectorRunning] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // A5: łańcuchowy polling przez setTimeout — timeout aktualnie zaplanowany
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flaga anulowania — przerywa pętlę gdy użytkownik kliknie Stop
+  const pollCancelledRef = useRef(false);
   // Zapamiętana długość historii — do wykrywania nowego ruchu i auto-analizy
   const prevHistoryLenRef = useRef(0);
 
@@ -271,10 +281,10 @@ export default function App() {
       setGameState(data);
       setFen(data.fen);
       setLiveError(null);
-      // Auto-analiza Stockfisha gdy wykryto nowy ruch
+      // Auto-analiza Stockfisha gdy wykryto nowy ruch — niższy depth dla szybkiej reakcji (A8)
       if (data.history_length > prevHistoryLenRef.current) {
         prevHistoryLenRef.current = data.history_length;
-        void evaluateWithFen(data.fen);
+        void evaluateWithFen(data.fen, LIVE_EVAL_DEPTH);
       }
     } catch {
       setLiveError("Brak połączenia z backendem CV.");
@@ -342,42 +352,69 @@ export default function App() {
     }
   };
 
-  // Wewnętrzna wersja evaluate przyjmująca FEN jako parametr (nie z state)
-  const evaluateWithFen = useCallback(async (fenStr: string) => {
-    if (!fenStr.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const { depth: d, strengthMode: sm, eloLimit: el, skillLevel: sl } =
-        engineSettingsRef.current;
-      const res = await fetch(`${API}/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildEvaluatePayload(fenStr, d, sm, el, sl)),
-      });
-      const data: unknown = await res.json();
-      if (!res.ok) throw new Error(parseApiErrorPayload(data));
-      setResult(data as EvalResponse);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Nieznany błąd");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Wewnętrzna wersja evaluate przyjmująca FEN jako parametr (nie z state).
+  // depthOverride pozwala wymusić niższą głębokość dla auto-analizy live (A8).
+  const evaluateWithFen = useCallback(
+    async (fenStr: string, depthOverride?: number) => {
+      if (!fenStr.trim()) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const { depth: d, strengthMode: sm, eloLimit: el, skillLevel: sl } =
+          engineSettingsRef.current;
+        const effectiveDepth = depthOverride ?? d;
+        const res = await fetch(`${API}/evaluate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            buildEvaluatePayload(fenStr, effectiveDepth, sm, el, sl)
+          ),
+        });
+        const data: unknown = await res.json();
+        if (!res.ok) throw new Error(parseApiErrorPayload(data));
+        setResult(data as EvalResponse);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Nieznany błąd");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
-  // Polling: uruchamia interwał co 1,5 s gdy detektor jest aktywny
-  // Każda iteracja: tick (przetwórz klatkę) → odczyt stanu gry
+  // A5 + A6: łańcuchowy polling — kolejny tick dopiero gdy poprzedni się skończy.
+  // Eliminuje backlog requestów na backendzie i odstęp 500 ms działa zawsze
+  // jako minimalna przerwa, a nie sztywny rytm.
   useEffect(() => {
-    if (detectorRunning) {
-      void fetchGameState(); // natychmiastowy odczyt stanu po starcie
-      pollIntervalRef.current = setInterval(() => {
-        void tickAndSync();  // tick + sync co 1,5 s
-      }, 1500);
-    } else {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (!detectorRunning) {
+      pollCancelledRef.current = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+      return;
     }
+
+    pollCancelledRef.current = false;
+
+    const loop = async () => {
+      if (pollCancelledRef.current) return;
+      await tickAndSync();
+      if (pollCancelledRef.current) return;
+      pollTimeoutRef.current = setTimeout(() => {
+        void loop();
+      }, LIVE_POLL_INTERVAL_MS);
+    };
+
+    void fetchGameState(); // natychmiastowy odczyt stanu po starcie
+    void loop();
+
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      pollCancelledRef.current = true;
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
     };
   }, [detectorRunning, fetchGameState, tickAndSync]);
 
