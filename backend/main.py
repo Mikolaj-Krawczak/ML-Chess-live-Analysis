@@ -7,8 +7,10 @@ na Windows ustawiana jest polityka pętli zdarzeń Proactor (wymagana do subproc
 """
 
 import asyncio
+import logging
 import os
 import sys
+import threading
 from pathlib import Path
 
 # Na Windows domyślny SelectorEventLoop nie obsługuje subprocess — Stockfish przez UCI tego wymaga.
@@ -51,6 +53,7 @@ def _startup():
 def _shutdown():
     """Zatrzymuje wątki backgroundowe (stream kamery, silnik szachowy)."""
     on_shutdown()
+    _close_engine()
 
 # --- Ścieżka do Stockfisha: .env (STOCKFISH_PATH) lub domyślna lokalizacja w repozytorium ---
 
@@ -58,6 +61,65 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_REPO_ROOT / ".env")
 _DEFAULT_STOCKFISH = _REPO_ROOT / "stockfish" / "stockfish-windows-x86-64-avx2.exe"
 STOCKFISH_PATH = os.environ.get("STOCKFISH_PATH", str(_DEFAULT_STOCKFISH))
+
+_log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# A7: Persistent Stockfish engine
+# ---------------------------------------------------------------------------
+# Tworzenie procesu Stockfisha (popen_uci) zajmuje ~0.5-1.5s. Przy trybie live
+# analiza po każdym ruchu oznaczałaby nowy proces za każdym razem.
+# Trzymamy jedną instancję na cały czas życia aplikacji, z blokadą wątkową
+# (sesja UCI jest stanowa — tylko jedno analyse() naraz).
+
+_engine_lock = threading.Lock()
+_engine: chess.engine.SimpleEngine | None = None
+
+
+def _get_engine() -> chess.engine.SimpleEngine:
+    """Zwraca singleton silnika, tworząc go przy pierwszym użyciu."""
+    global _engine
+    if _engine is None:
+        if not os.path.exists(STOCKFISH_PATH):
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Stockfish nie znaleziony pod: {STOCKFISH_PATH}. "
+                    "Ustaw zmienną środowiskową STOCKFISH_PATH."
+                ),
+            )
+        _engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+        _log.info("Stockfish engine uruchomiony (persistent).")
+    return _engine
+
+
+def _close_engine() -> None:
+    """Zamyka silnik — wywoływane przy shutdown aplikacji."""
+    global _engine
+    if _engine is not None:
+        try:
+            _engine.quit()
+        except Exception as exc:  # pragma: no cover
+            _log.warning("Błąd przy zamykaniu silnika: %s", exc)
+        _engine = None
+
+
+def _configure_engine_for_request(
+    engine: chess.engine.SimpleEngine, req: "FENRequest"
+) -> None:
+    """
+    Ustawia opcje UCI zgodnie z trybem siły z żądania.
+    Reset do pełnej siły jest kluczowy, bo persistent engine zachowuje
+    stan UCI między żądaniami.
+    """
+    if req.elo_limit is not None:
+        engine.configure({"UCI_LimitStrength": True, "UCI_Elo": req.elo_limit})
+    elif req.skill_level is not None:
+        engine.configure(
+            {"UCI_LimitStrength": False, "Skill Level": req.skill_level}
+        )
+    else:
+        engine.configure({"UCI_LimitStrength": False, "Skill Level": 20})
 
 
 def _clamp_int(value: int, low: int, high: int) -> int:
@@ -196,37 +258,39 @@ def health():
 @app.post("/evaluate", response_model=EvalResponse)
 def evaluate(req: FENRequest):
     """
-    Uruchamia analizę pozycji: konfiguruje silnik (Elo / Skill Level), analyse(depth).
+    Uruchamia analizę pozycji używając persistent engine (A7).
+    Blokada zapewnia, że tylko jedno żądanie analizy leci do silnika naraz.
     """
     try:
         board = chess.Board(req.fen)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Nieprawidłowy FEN: {e}")
 
-    if not os.path.exists(STOCKFISH_PATH):
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Stockfish nie znaleziony pod: {STOCKFISH_PATH}. "
-                "Ustaw zmienną środowiskową STOCKFISH_PATH."
-            ),
-        )
-
-    try:
-        with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as engine:
-            if req.elo_limit is not None:
-                engine.configure(
-                    {"UCI_LimitStrength": True, "UCI_Elo": req.elo_limit}
-                )
-            elif req.skill_level is not None:
-                engine.configure({"Skill Level": req.skill_level})
-
+    with _engine_lock:
+        try:
+            engine = _get_engine()
+            _configure_engine_for_request(engine, req)
             info = engine.analyse(board, chess.engine.Limit(depth=req.depth))
-    except Exception as e:
-        msg = str(e).strip() or repr(e)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Błąd Stockfisha ({type(e).__name__}): {msg}",
-        )
+        except chess.engine.EngineTerminatedError:
+            # Proces silnika padł — zrestartuj i spróbuj ponownie raz
+            _log.warning("Stockfish padł — restart i retry.")
+            _close_engine()
+            try:
+                engine = _get_engine()
+                _configure_engine_for_request(engine, req)
+                info = engine.analyse(board, chess.engine.Limit(depth=req.depth))
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Błąd Stockfisha po restarcie ({type(e).__name__}): {e}",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            msg = str(e).strip() or repr(e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Błąd Stockfisha ({type(e).__name__}): {msg}",
+            )
 
     return _eval_response_from_engine(board, info, req.depth)
