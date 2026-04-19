@@ -3,6 +3,20 @@ import type { CSSProperties, KeyboardEvent, ChangeEvent } from "react";
 import "./App.css";
 import BoardPanel from "./BoardPanel";
 
+/** Stan gry zwracany przez GET /cv/game/state */
+interface GameStateResponse {
+  fen: string;
+  turn: "white" | "black";
+  move_number: number;
+  halfmove_clock: number;
+  is_check: boolean;
+  is_checkmate: boolean;
+  is_stalemate: boolean;
+  is_game_over: boolean;
+  history: string[];
+  history_length: number;
+}
+
 const API = "http://localhost:8000";
 
 const STARTING_FEN =

@@ -6,6 +6,7 @@ Wyjście:  (move_uci | None, reason: str)
 
 Obsługiwane wzorce:
   Standardowy ruch / bicie    → 1 zniknięcie + 1 pojawienie
+  Bicie na pole zajęte        → 1 zniknięcie + 0 pojawień (cel był zajęty przed i po)
   Roszada                     → 2 zniknięcia + 2 pojawienia (wzorce e1/e8)
   En passant                  → 2 zniknięcia + 1 pojawienie
   Promocja                    → jak standardowy, z automatycznym hetmanem
@@ -55,6 +56,13 @@ def infer_move(
         src = next(iter(disappeared))
         dst = next(iter(appeared))
         return _validate_simple(src, dst, board)
+
+    # Bicie na pole, które było już zajęte (1 znika, 0 pojawia)
+    # CNN widzi cel jako "nadal zajęte" — delta nie pokazuje pojawienia się nowego pola.
+    if len(disappeared) == 1 and len(appeared) == 0:
+        uci = _try_capture_occupied_dst(disappeared, before, after, board)
+        if uci:
+            return uci, f"Bicie (cel zajęty): {uci}"
 
     return None, (
         f"Nierozpoznany wzorzec: zniknęło={sorted(disappeared)}, "
@@ -112,4 +120,39 @@ def _try_en_passant(
         piece = board.piece_at(src_sq)
         if move in board.legal_moves and piece and piece.piece_type == chess.PAWN:
             return move.uci()
+    return None
+
+
+def _try_capture_occupied_dst(
+    disappeared: set[str],
+    before: set[str],
+    after: set[str],
+    board: chess.Board,
+) -> str | None:
+    """
+    Obsługuje bicie, gdy pole docelowe było zajęte zarówno przed jak i po ruchu.
+    CNN raportuje cel jako 'nadal zajęty' — znikneło tylko pole źródłowe.
+    Szukamy legalnego bicia spośród pól wspólnych dla before i after.
+    """
+    src = next(iter(disappeared))
+    src_sq = chess.parse_square(src)
+    piece = board.piece_at(src_sq)
+
+    # Kandydaci: pola zajęte w obu stanach (były zajęte i nadal są)
+    candidates = (before & after) - {src}
+
+    for dst_name in candidates:
+        dst_sq = chess.parse_square(dst_name)
+        is_promotion = (
+            piece is not None
+            and piece.piece_type == chess.PAWN
+            and chess.square_rank(dst_sq) in (0, 7)
+        )
+        move = chess.Move(
+            src_sq, dst_sq, promotion=DEFAULT_PROMOTION if is_promotion else None
+        )
+        if move in board.legal_moves:
+            logger.debug("Bicie na zajęte pole: %s->%s", src, dst_name)
+            return move.uci()
+
     return None
