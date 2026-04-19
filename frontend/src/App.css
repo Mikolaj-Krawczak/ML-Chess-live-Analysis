@@ -1063,3 +1063,207 @@ button.reset-btn:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ——— Live Game Panel ——— */
+.live-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: clamp(1rem, 2.5vw, 1.25rem);
+  background: linear-gradient(
+    145deg,
+    rgba(18, 28, 24, 0.95) 0%,
+    rgba(12, 20, 16, 0.98) 100%
+  );
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  position: relative;
+}
+
+/* Subtelna zielona poświata gdy detektor aktywny */
+.live-section:has(.live-badge--active) {
+  border-color: rgba(79, 168, 120, 0.4);
+  box-shadow: 0 0 0 1px rgba(79, 168, 120, 0.12), 0 0 28px rgba(79, 168, 120, 0.06);
+}
+
+.live-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.live-section-title {
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.live-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--surface-muted);
+  transition: color 0.25s, background 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+
+.live-badge--active {
+  color: var(--accent);
+  background: rgba(79, 168, 120, 0.12);
+  border-color: rgba(79, 168, 120, 0.45);
+  box-shadow: 0 0 10px rgba(79, 168, 120, 0.2);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(79, 168, 120, 0.2); }
+  50%       { box-shadow: 0 0 18px rgba(79, 168, 120, 0.45); }
+}
+
+/* Tabela stanu gry (FEN, kolej, ruch, status) */
+.game-state-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+}
+
+.game-state-table tr + tr td {
+  border-top: 1px solid rgba(212, 175, 88, 0.08);
+}
+
+.gst-label {
+  padding: 0.45rem 0.75rem 0.45rem 0;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  width: 5rem;
+  vertical-align: top;
+}
+
+.gst-val {
+  padding: 0.45rem 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  word-break: break-all;
+}
+
+.gst-val--fen {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.gst-val--alert {
+  color: var(--gold-bright);
+  font-weight: 700;
+}
+
+/* Historia ruchów */
+.move-history-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.move-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.history-move-chip {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--gold);
+  letter-spacing: 0.03em;
+}
+
+/* Przyciski START / STOP / RESET */
+.live-btn-row {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.live-btn {
+  flex: 1 1 auto;
+  min-height: 2.85rem;
+  padding: 0.65rem 1.25rem;
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.1s;
+  border: 2px solid transparent;
+}
+
+.live-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.live-btn--start {
+  background: linear-gradient(150deg, var(--moss) 0%, #1c3a2e 100%);
+  color: var(--white-clr);
+  border-color: rgba(79, 168, 120, 0.4);
+  box-shadow: 0 0 18px var(--moss-glow);
+}
+
+.live-btn--start:hover:not(:disabled) {
+  background: linear-gradient(150deg, #3a7a62 0%, var(--moss) 100%);
+  transform: scale(1.02);
+}
+
+/* Gdy aktywny (STOP) */
+.live-btn--stop {
+  background: linear-gradient(150deg, #5a2a2a 0%, #3a1818 100%);
+  color: #f0a0a0;
+  border-color: rgba(220, 100, 100, 0.4);
+  box-shadow: 0 0 18px rgba(180, 60, 60, 0.15);
+}
+
+.live-btn--stop:hover:not(:disabled) {
+  background: linear-gradient(150deg, #7a3232 0%, #5a2020 100%);
+  transform: scale(1.02);
+}
+
+.live-btn--reset {
+  flex: 0 0 auto;
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+.live-btn--reset:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--gold-bright);
+  background: var(--gold-dim);
+}
+
+.live-btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Separator między Live Game a sekcją Stockfish */
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin-block: 0.25rem;
+}

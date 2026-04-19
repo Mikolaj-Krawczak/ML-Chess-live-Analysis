@@ -219,6 +219,15 @@ export default function App() {
   const [eloLimit, setEloLimit] = useState(DEFAULT_ELO);
   const [skillLevel, setSkillLevel] = useState(DEFAULT_SKILL);
 
+  // --- Stan live gry z kamery ---
+  const [gameState, setGameState] = useState<GameStateResponse | null>(null);
+  const [detectorRunning, setDetectorRunning] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Zapamiętana długość historii — do wykrywania nowego ruchu i auto-analizy
+  const prevHistoryLenRef = useRef(0);
+
   // Ref do bieżących ustawień silnika — pozwala wywołać analizę ze świeżymi
   // wartościami bez dodawania ich do deps useEffect nasłuchującego na FEN
   const engineSettingsRef = useRef({ depth, strengthMode, eloLimit, skillLevel });
@@ -252,6 +261,135 @@ export default function App() {
       setLoading(false);
     }
   }, [fen]);
+
+  // Pobiera aktualny stan gry z backendu i synchronizuje FEN planszy
+  const fetchGameState = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/cv/game/state`);
+      if (!res.ok) return;
+      const data = (await res.json()) as GameStateResponse;
+      setGameState(data);
+      setFen(data.fen);
+      setLiveError(null);
+      // Auto-analiza Stockfisha gdy wykryto nowy ruch
+      if (data.history_length > prevHistoryLenRef.current) {
+        prevHistoryLenRef.current = data.history_length;
+        void evaluateWithFen(data.fen);
+      }
+    } catch {
+      setLiveError("Brak połączenia z backendem CV.");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Jedna iteracja pollingowa: tick detektora → odczyt stanu gry
+  const tickAndSync = useCallback(async () => {
+    try {
+      // Tick przetwarza klatkę z kamery i wykrywa ruch (jeśli nastąpił)
+      await fetch(`${API}/cv/game/detector/tick`, { method: "POST" });
+    } catch {
+      // Błąd ticki nie blokuje odczytu stanu — logujemy cicho
+    }
+    // Zawsze odśwież stan po ticku (nowy FEN, historia, kolej)
+    await fetchGameState();
+  }, [fetchGameState]);
+
+  // Uruchamia detektor (inicjalizuje snapshot 'before' z kamery)
+  const handleStart = async () => {
+    setLiveLoading(true);
+    setLiveError(null);
+    try {
+      const res = await fetch(`${API}/cv/game/detector/start`, { method: "POST" });
+      if (!res.ok) {
+        const data: unknown = await res.json();
+        throw new Error(parseApiErrorPayload(data));
+      }
+      setDetectorRunning(true);
+      await fetchGameState();
+    } catch (e: unknown) {
+      setLiveError(e instanceof Error ? e.message : "Błąd uruchamiania detektora.");
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
+  // Zatrzymuje polling — nie woła backendu, tylko zatrzymuje interwał
+  const handleStop = () => {
+    setDetectorRunning(false);
+  };
+
+  // Resetuje stan gry po stronie backendu i odświeża planszę
+  const handleReset = async () => {
+    setLiveLoading(true);
+    setLiveError(null);
+    try {
+      const res = await fetch(`${API}/cv/game/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fen: STARTING_FEN }),
+      });
+      if (!res.ok) {
+        const data: unknown = await res.json();
+        throw new Error(parseApiErrorPayload(data));
+      }
+      prevHistoryLenRef.current = 0;
+      setResult(null);
+      setError(null);
+      await fetchGameState();
+    } catch (e: unknown) {
+      setLiveError(e instanceof Error ? e.message : "Błąd resetowania gry.");
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
+  // Wewnętrzna wersja evaluate przyjmująca FEN jako parametr (nie z state)
+  const evaluateWithFen = useCallback(async (fenStr: string) => {
+    if (!fenStr.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { depth: d, strengthMode: sm, eloLimit: el, skillLevel: sl } =
+        engineSettingsRef.current;
+      const res = await fetch(`${API}/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildEvaluatePayload(fenStr, d, sm, el, sl)),
+      });
+      const data: unknown = await res.json();
+      if (!res.ok) throw new Error(parseApiErrorPayload(data));
+      setResult(data as EvalResponse);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Nieznany błąd");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Polling: uruchamia interwał co 1,5 s gdy detektor jest aktywny
+  // Każda iteracja: tick (przetwórz klatkę) → odczyt stanu gry
+  useEffect(() => {
+    if (detectorRunning) {
+      void fetchGameState(); // natychmiastowy odczyt stanu po starcie
+      pollIntervalRef.current = setInterval(() => {
+        void tickAndSync();  // tick + sync co 1,5 s
+      }, 1500);
+    } else {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    }
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [detectorRunning, fetchGameState, tickAndSync]);
+
+  // Etykieta statusu gry do wyświetlenia w tabeli
+  const gameStatusLabel = (() => {
+    if (!gameState) return "—";
+    if (gameState.is_checkmate) return "Mat!";
+    if (gameState.is_stalemate) return "Pat!";
+    if (gameState.is_game_over) return "Koniec gry";
+    if (gameState.is_check) return "Szach!";
+    return "Trwa gra";
+  })();
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !loading) void evaluate();
@@ -366,6 +504,95 @@ export default function App() {
       </div>
 
       <div className="input-panel">
+        {/* ===== SEKCJA LIVE GAME ===== */}
+        <div className="live-section">
+          <div className="live-section-header">
+            <span className="live-section-title">Live Camera</span>
+            <span className={`live-badge${detectorRunning ? " live-badge--active" : ""}`}>
+              {detectorRunning ? "● LIVE" : "○ IDLE"}
+            </span>
+          </div>
+
+          {/* Tabela stanu gry */}
+          <table className="game-state-table">
+            <tbody>
+              <tr>
+                <td className="gst-label">FEN</td>
+                <td className="gst-val gst-val--fen">{gameState?.fen ?? STARTING_FEN}</td>
+              </tr>
+              <tr>
+                <td className="gst-label">Kolej</td>
+                <td className="gst-val">
+                  {gameState
+                    ? gameState.turn === "white"
+                      ? "♟ Białe"
+                      : "♙ Czarne"
+                    : "—"}
+                </td>
+              </tr>
+              <tr>
+                <td className="gst-label">Ruch #</td>
+                <td className="gst-val">{gameState?.move_number ?? "—"}</td>
+              </tr>
+              <tr>
+                <td className="gst-label">Status</td>
+                <td
+                  className={`gst-val${
+                    gameState?.is_check || gameState?.is_game_over
+                      ? " gst-val--alert"
+                      : ""
+                  }`}
+                >
+                  {gameStatusLabel}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Historia ostatnich 10 ruchów */}
+          {gameState && gameState.history.length > 0 && (
+            <div className="move-history-wrap">
+              <span className="control-label">Ostatnie ruchy</span>
+              <div className="move-history-list">
+                {gameState.history.slice(-10).map((move, i) => (
+                  <span key={i} className="history-move-chip">
+                    {move}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Przyciski START / STOP / RESET */}
+          <div className="live-btn-row">
+            <button
+              type="button"
+              className={`live-btn live-btn--start${detectorRunning ? " live-btn--stop" : ""}`}
+              onClick={() => void (detectorRunning ? handleStop() : handleStart())}
+              disabled={liveLoading}
+            >
+              {liveLoading
+                ? "…"
+                : detectorRunning
+                ? "⏹ Stop"
+                : "▶ Start"}
+            </button>
+            <button
+              type="button"
+              className="live-btn live-btn--reset"
+              onClick={() => void handleReset()}
+              disabled={liveLoading}
+            >
+              ↺ Reset
+            </button>
+          </div>
+
+          {liveError && <div className="error-msg">⚠ {liveError}</div>}
+        </div>
+
+        <div className="section-divider" />
+
+        {/* ===== SEKCJA STOCKFISH ===== */}
         <label className="input-label" htmlFor="fen-input">
           Pozycja FEN
         </label>
@@ -497,7 +724,6 @@ export default function App() {
             type="button"
             className="reset-btn"
             onClick={() => {
-              setFen(STARTING_FEN);
               setResult(null);
               setError(null);
               setDepth(DEFAULT_DEPTH);
@@ -505,8 +731,9 @@ export default function App() {
               setEloLimit(DEFAULT_ELO);
               setSkillLevel(DEFAULT_SKILL);
             }}
+            title="Wyczyść wyniki analizy i przywróć domyślne ustawienia silnika"
           >
-            Reset
+            Wyczyść
           </button>
         </div>
         {error && <div className="error-msg">⚠ {error}</div>}
