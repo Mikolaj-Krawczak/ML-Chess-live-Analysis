@@ -75,6 +75,20 @@ def on_startup() -> None:
 
     _load_ml_models()
 
+    # A1: wątek backgroundowy ciągle czyta MJPEG — eliminuje HTTP GET per tick
+    try:
+        camera.start_stream_thread()
+    except Exception as exc:
+        logger.warning("Nie udało się uruchomić wątku strumienia kamery: %s", exc)
+
+
+def on_shutdown() -> None:
+    """Graceful shutdown — zatrzymuje wątki backgroundowe."""
+    try:
+        camera.stop_stream_thread()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Błąd przy zatrzymywaniu wątku kamery: %s", exc)
+
 
 def _load_ml_models() -> None:
     """Ładuje modele ML jeśli dostępne wagi (nie rzuca wyjątku)."""
@@ -729,7 +743,7 @@ def detector_start():
     Wywołuj po kalibracji i po każdym resecie gry.
     """
     try:
-        frame = camera.fetch_snapshot()
+        frame = camera.fetch_snapshot_fast()
     except RuntimeError as exc:
         raise HTTPException(503, detail=str(exc))
     try:
@@ -760,7 +774,7 @@ def detector_tick():
     FEN zaktualizowany, gotowy do /evaluate-current.
     """
     try:
-        frame = camera.fetch_snapshot()
+        frame = camera.fetch_snapshot_fast()
     except RuntimeError as exc:
         raise HTTPException(503, detail=str(exc))
     try:
