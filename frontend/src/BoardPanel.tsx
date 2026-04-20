@@ -48,7 +48,13 @@ export default function BoardPanel({
   }
 
   return (
-    <div className="board-panel">
+    <div
+      className="board-panel"
+      style={{
+        width: `${boardWidth}px`,
+        height: `${boardWidth}px`,
+      }}
+    >
       <Chessboard
         options={{
           id: "main-board",

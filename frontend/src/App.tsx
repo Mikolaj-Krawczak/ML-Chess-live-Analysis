@@ -3,6 +3,290 @@ import type { CSSProperties, KeyboardEvent, ChangeEvent } from "react";
 import "./App.css";
 import BoardPanel from "./BoardPanel";
 
+// System dźwięków szachowych
+class ChessAudio {
+  private static instance: ChessAudio;
+  private sounds: Record<string, HTMLAudioElement> = {};
+  
+  constructor() {
+    // Preload wszystkich dźwięków
+    this.sounds.move = new Audio('/sounds/move.mp3');
+    this.sounds.capture = new Audio('/sounds/capture.mp3');
+    this.sounds.castle = new Audio('/sounds/castle.mp3');
+    this.sounds.promote = new Audio('/sounds/promote.mp3');
+    this.sounds.check = new Audio('/sounds/move-check.mp3');
+    
+    // Ustaw głośność i optymalizacje dla szybkiego odtwarzania
+    Object.values(this.sounds).forEach(audio => {
+      audio.volume = 0.3;
+      audio.preload = 'auto';
+      // Wymuś natychmiastowe odtwarzanie bez buforowania
+      audio.load();
+    });
+  }
+  
+  static getInstance(): ChessAudio {
+    if (!ChessAudio.instance) {
+      ChessAudio.instance = new ChessAudio();
+    }
+    return ChessAudio.instance;
+  }
+  
+  play(soundType: 'move' | 'capture' | 'castle' | 'promote' | 'check'): void {
+    const audio = this.sounds[soundType];
+    if (audio) {
+      // Zatrzymaj poprzedni dźwięk tego typu jeśli gra
+      audio.pause();
+      audio.currentTime = 0;
+      
+      // Natychmiastowe odtwarzanie
+      const playPromise = audio.play();
+      if (playPromise) {
+        playPromise.catch(err => console.warn('Nie można odtworzyć dźwięku:', err));
+      }
+    }
+  }
+}
+
+interface MoveAnalysis {
+  isCapture: boolean;
+  isCastle: boolean;
+  isPromotion: boolean;
+  isCheck: boolean;
+}
+
+// Analizuje rodzaj ruchu na podstawie zmian FEN i stanu gry
+function analyzeMoveType(
+  prevFen: string,
+  newFen: string,
+  gameState: GameStateResponse | null
+): MoveAnalysis | null {
+  if (!prevFen || !newFen || prevFen === newFen) return null;
+  
+  const prevPieces = prevFen.split(' ')[0].replace(/[^a-zA-Z]/g, '');
+  const newPieces = newFen.split(' ')[0].replace(/[^a-zA-Z]/g, '');
+  
+  const isCapture = prevPieces.length > newPieces.length;
+  const isCheck = gameState?.is_check || false;
+  
+  // Wykryj roszadę (król przesunął się o 2 pola)
+  const isCastle = /[Kk]/.test(prevFen) && /[Kk]/.test(newFen) && 
+    Math.abs(prevFen.indexOf('K') - newFen.indexOf('K')) === 2;
+  
+  // Wykryj promocję (pojawił się nowy hetman/wieża/goniec/koń)
+  const prevCount = (prevPieces.match(/[QRBNqrbn]/g) || []).length;
+  const newCount = (newPieces.match(/[QRBNqrbn]/g) || []).length;
+  const isPromotion = newCount > prevCount;
+  
+  return { isCapture, isCastle, isPromotion, isCheck };
+}
+
+// Odtwarza odpowiedni dźwięk na podstawie analizy ruchu
+function playMoveSound(moveAnalysis: MoveAnalysis, gameState: GameStateResponse | null) {
+  const chessAudio = ChessAudio.getInstance();
+  
+  // Wybierz odpowiedni dźwięk wg priorytetu
+  if (gameState?.is_checkmate) {
+    // Mat = brak dźwięku lub specjalny (nie mamy pliku)
+  } else if (moveAnalysis.isCheck) {
+    chessAudio.play('check');
+  } else if (moveAnalysis.isCastle) {
+    chessAudio.play('castle');
+  } else if (moveAnalysis.isPromotion) {
+    chessAudio.play('promote');
+  } else if (moveAnalysis.isCapture) {
+    chessAudio.play('capture');
+  } else {
+    chessAudio.play('move');
+  }
+}
+
+// Wartości materiałowe figur
+const PIECE_VALUES: Record<string, number> = {
+  'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9, 'k': 0,
+  'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0,
+};
+
+// Unicode figury szachowe
+const PIECE_SYMBOLS: Record<string, string> = {
+  'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
+  'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
+};
+
+interface MaterialInfo {
+  whiteCaptured: string[];
+  blackCaptured: string[];
+  whiteMaterial: number;
+  blackMaterial: number;
+  materialAdvantage: number; // + = white advantage, - = black advantage
+}
+
+function buildCaptureRows(captured: string[]): string[][] {
+  const byType: Record<string, string[]> = {
+    p: [],
+    n: [],
+    b: [],
+    r: [],
+    q: [],
+  };
+
+  captured.forEach((piece) => {
+    const key = piece.toLowerCase();
+    if (key in byType) {
+      byType[key].push(piece);
+    }
+  });
+
+  // Stały układ wg ważności figur (od najcenniejszych do najmniej cennych),
+  // niezależnie od czasu zbicia.
+  const rows: string[][] = [];
+  if (byType.q.length > 0) rows.push(byType.q);
+  if (byType.r.length > 0) rows.push(byType.r);
+  if (byType.b.length > 0) rows.push(byType.b);
+  if (byType.n.length > 0) rows.push(byType.n);
+  if (byType.p.length > 0) rows.push(byType.p);
+
+  return rows;
+}
+
+// Analizuje materiał z FEN vs pozycja startowa
+function analyzeMaterial(fen: string): MaterialInfo {
+  const startingPieces = "rnbqkbnrppppppppPPPPPPPPRNBQKBNR";
+  const currentPieces = fen.split(' ')[0].replace(/[^a-zA-Z]/g, '');
+  
+  // Zlicz figury w pozycji startowej vs obecnej
+  const startCount: Record<string, number> = {};
+  const currentCount: Record<string, number> = {};
+  
+  for (const piece of startingPieces) {
+    startCount[piece] = (startCount[piece] || 0) + 1;
+  }
+  
+  for (const piece of currentPieces) {
+    currentCount[piece] = (currentCount[piece] || 0) + 1;
+  }
+  
+  const whiteCaptured: string[] = [];
+  const blackCaptured: string[] = [];
+  let whiteMaterial = 0;
+  let blackMaterial = 0;
+  
+  // Sprawdź jakie figury zostały zbite
+  for (const piece in startCount) {
+    const missing = startCount[piece] - (currentCount[piece] || 0);
+    const isWhitePiece = piece === piece.toUpperCase();
+    
+    // Figury zbite przez białych (brakuje czarnych figur)
+    if (!isWhitePiece && missing > 0) {
+      for (let i = 0; i < missing; i++) {
+        whiteCaptured.push(piece);
+      }
+    }
+    
+    // Figury zbite przez czarnych (brakuje białych figur)
+    if (isWhitePiece && missing > 0) {
+      for (let i = 0; i < missing; i++) {
+        blackCaptured.push(piece);
+      }
+    }
+  }
+  
+  // Policz obecny materiał każdej strony
+  for (const piece of currentPieces) {
+    const value = PIECE_VALUES[piece] || 0;
+    if (piece === piece.toUpperCase()) {
+      whiteMaterial += value;
+    } else {
+      blackMaterial += value;
+    }
+  }
+  
+  return {
+    whiteCaptured,
+    blackCaptured,
+    whiteMaterial,
+    blackMaterial,
+    materialAdvantage: whiteMaterial - blackMaterial,
+  };
+}
+
+interface MaterialDisplayProps {
+  fen: string;
+  boardOrientation: "white" | "black";
+  boardSizePx: number;
+}
+
+function MaterialDisplay({ fen, boardOrientation, boardSizePx }: MaterialDisplayProps) {
+  const material = analyzeMaterial(fen);
+
+  const capturesByWhite = material.whiteCaptured; // Czarne figury zbite przez białego
+  const capturesByBlack = material.blackCaptured; // Białe figury zbite przez czarnego
+
+  const topPlayerIsWhite = boardOrientation === "black";
+  const topCaptured = topPlayerIsWhite ? capturesByWhite : capturesByBlack;
+  const bottomCaptured = topPlayerIsWhite ? capturesByBlack : capturesByWhite;
+  const topRows = buildCaptureRows(topCaptured);
+  const bottomRows = buildCaptureRows(bottomCaptured);
+
+  const topAdvantage =
+    (topPlayerIsWhite && material.materialAdvantage > 0) ||
+    (!topPlayerIsWhite && material.materialAdvantage < 0)
+      ? `+${Math.abs(material.materialAdvantage)}`
+      : "";
+
+  const bottomAdvantage =
+    (!topPlayerIsWhite && material.materialAdvantage > 0) ||
+    (topPlayerIsWhite && material.materialAdvantage < 0)
+      ? `+${Math.abs(material.materialAdvantage)}`
+      : "";
+
+  return (
+    <div className="material-display" style={{ height: `${boardSizePx}px` }}>
+      {/* Materiał gracza z górnej strony planszy */}
+      <div className="material-section material-section--top">
+        <div className="captured-pieces">
+          {topRows.map((row, rowIndex) => (
+            <div key={`top-row-${rowIndex}`} className="captured-row">
+              {row.map((piece, index) => (
+                <span
+                  key={`${piece}-${rowIndex}-${index}-top`}
+                  className={`captured-piece ${
+                    piece === piece.toUpperCase() ? "captured-piece--white" : "captured-piece--black"
+                  }`}
+                >
+                  {PIECE_SYMBOLS[piece]}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+        {topAdvantage && <span className="material-advantage">{topAdvantage}</span>}
+      </div>
+
+      {/* Materiał gracza z dolnej strony planszy */}
+      <div className="material-section material-section--bottom">
+        {bottomAdvantage && <span className="material-advantage">{bottomAdvantage}</span>}
+        <div className="captured-pieces">
+          {bottomRows.map((row, rowIndex) => (
+            <div key={`bottom-row-${rowIndex}`} className="captured-row">
+              {row.map((piece, index) => (
+                <span
+                  key={`${piece}-${rowIndex}-${index}-bottom`}
+                  className={`captured-piece ${
+                    piece === piece.toUpperCase() ? "captured-piece--white" : "captured-piece--black"
+                  }`}
+                >
+                  {PIECE_SYMBOLS[piece]}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Stan gry zwracany przez GET /cv/game/state */
 interface GameStateResponse {
   fen: string;
@@ -15,6 +299,23 @@ interface GameStateResponse {
   is_game_over: boolean;
   history: string[];
   history_length: number;
+}
+
+interface OccupancyResponse {
+  ok: boolean;
+  message: string;
+  occupied_squares: string[];
+  empty_squares: string[];
+  occupied_count: number;
+  cells: Array<{
+    square: string;
+    occupied: boolean;
+    score: number;
+    method: string;
+  }>;
+  debug_image_b64?: string;
+  threshold_used: number;
+  occupancy_method: string;
 }
 
 const API = "http://localhost:8000";
@@ -55,17 +356,30 @@ export interface EvalResponse {
 const clamp = (v: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, v));
 
-// Zamień ocenę na etykietę tekstową
+// Zamień ocenę na etykietę tekstową z uwzględnieniem orientacji planszy
 function formatScore(
   score: number,
   scoreType: "cp" | "mate",
-  mateIn: number | null
+  mateIn: number | null,
+  boardOrientation: "white" | "black"
 ): string {
   if (scoreType === "mate") {
     if (mateIn == null) return "M?";
-    return mateIn > 0 ? `+M${mateIn}` : `-M${Math.abs(mateIn)}`;
+    let displayMateIn = mateIn;
+    // Odwróć znak mata jeśli plansza jest od strony czarnych
+    if (boardOrientation === "black") {
+      displayMateIn = -mateIn;
+    }
+    return displayMateIn > 0 ? `+M${displayMateIn}` : `-M${Math.abs(displayMateIn)}`;
   }
-  return score >= 0 ? `+${score.toFixed(2)}` : score.toFixed(2);
+  
+  let displayScore = score;
+  // Odwróć znak wyniku jeśli plansza jest od strony czarnych
+  if (boardOrientation === "black") {
+    displayScore = -score;
+  }
+  
+  return displayScore >= 0 ? `+${displayScore.toFixed(2)}` : displayScore.toFixed(2);
 }
 
 interface ThermometerProps {
@@ -75,6 +389,7 @@ interface ThermometerProps {
   loading: boolean;
   /** Zgodnie z widokiem szachownicy: od czarnych — czarna strefa termometru na dole. */
   boardOrientation: "white" | "black";
+  boardSizePx: number;
 }
 
 // Termometr: 0% = czarne, 100% = białe (skala ok. ±10 pionów)
@@ -84,6 +399,7 @@ function Thermometer({
   mateIn,
   loading,
   boardOrientation,
+  boardSizePx,
 }: ThermometerProps) {
   const CAP = 10;
   const rawPercent =
@@ -96,7 +412,7 @@ function Thermometer({
   const whitePercent = clamp(rawPercent, 2, 98);
   const blackPercent = 100 - whitePercent;
 
-  const label = formatScore(score, scoreType, mateIn);
+  const label = formatScore(score, scoreType, mateIn, boardOrientation);
   const advantage =
     score > 0.2 ? "white" : score < -0.2 ? "black" : "equal";
 
@@ -105,21 +421,6 @@ function Thermometer({
 
   return (
     <div className={`thermo-wrap${fromBlack}`}>
-      <div className="thermo-labels">
-        <span className="thermo-label thermo-label--black">
-          <span className="thermo-piece" aria-hidden>
-            ♙
-          </span>
-          <span className="thermo-label-text">CZARNE</span>
-        </span>
-        <span className="thermo-label thermo-label--white">
-          <span className="thermo-piece" aria-hidden>
-            ♟
-          </span>
-          <span className="thermo-label-text">BIAŁE</span>
-        </span>
-      </div>
-
       <div
         className="thermo-bar"
         aria-label="Ocena pozycji"
@@ -127,6 +428,7 @@ function Thermometer({
           {
             "--thermo-black-pct": `${blackPercent}%`,
             "--thermo-white-pct": `${whitePercent}%`,
+            height: `${boardSizePx}px`,
           } as CSSProperties
         }
       >
@@ -153,24 +455,6 @@ function Thermometer({
           {loading ? "…" : label}
         </div>
       </div>
-    </div>
-  );
-}
-
-interface BestMoveDisplayProps {
-  move: string | null;
-}
-
-function BestMoveDisplay({ move }: BestMoveDisplayProps) {
-  if (!move) return null;
-  const from = move.slice(0, 2);
-  const to = move.slice(2, 4);
-  return (
-    <div className="best-move">
-      <span className="move-label">Najlepszy ruch</span>
-      <span className="move-arrow">
-        {from} → {to}
-      </span>
     </div>
   );
 }
@@ -225,18 +509,23 @@ export default function App() {
   const [strengthMode, setStrengthMode] = useState<StrengthMode>("full");
   const [eloLimit, setEloLimit] = useState(DEFAULT_ELO);
   const [skillLevel, setSkillLevel] = useState(DEFAULT_SKILL);
+  const currentBoardSize = Math.max(200, Math.floor(boardWidth * 0.6));
 
   // --- Stan live gry z kamery ---
   const [gameState, setGameState] = useState<GameStateResponse | null>(null);
   const [detectorRunning, setDetectorRunning] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
+  const [occupancyError, setOccupancyError] = useState<string | null>(null);
   // A5: łańcuchowy polling przez setTimeout — timeout aktualnie zaplanowany
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Flaga anulowania — przerywa pętlę gdy użytkownik kliknie Stop
   const pollCancelledRef = useRef(false);
   // Zapamiętana długość historii — do wykrywania nowego ruchu i auto-analizy
   const prevHistoryLenRef = useRef(0);
+  // Poprzedni FEN — do analizy rodzaju ruchu i odtwarzania dźwięków
+  const prevFenRef = useRef<string>(STARTING_FEN);
+  const prevVirtualFenRef = useRef<string>(STARTING_FEN);
 
   // Ref do bieżących ustawień silnika — pozwala wywołać analizę ze świeżymi
   // wartościami bez dodawania ich do deps useEffect nasłuchującego na FEN
@@ -244,6 +533,14 @@ export default function App() {
   useEffect(() => {
     engineSettingsRef.current = { depth, strengthMode, eloLimit, skillLevel };
   }, [depth, strengthMode, eloLimit, skillLevel]);
+
+  // Automatycznie zatrzymaj detektor po zakończeniu partii (np. mat).
+  useEffect(() => {
+    if (!detectorRunning || !gameState) return;
+    if (gameState.is_checkmate || gameState.is_game_over) {
+      setDetectorRunning(false);
+    }
+  }, [detectorRunning, gameState]);
 
   const evaluate = useCallback(async (fenOverride?: string) => {
     const fenToUse = fenOverride ?? fen;
@@ -281,9 +578,20 @@ export default function App() {
       setGameState(data);
       setFen(data.fen);
       setLiveError(null);
+      
       // Auto-analiza Stockfisha gdy wykryto nowy ruch — niższy depth dla szybkiej reakcji (A8)
       if (data.history_length > prevHistoryLenRef.current) {
         prevHistoryLenRef.current = data.history_length;
+        
+        // Analiza ruchu i odtwarzanie dźwięku dla live camera
+        const moveAnalysis = analyzeMoveType(prevFenRef.current, data.fen, data);
+        if (moveAnalysis) {
+          playMoveSound(moveAnalysis, data);
+        }
+        
+        // Zapisz obecny FEN jako poprzedni
+        prevFenRef.current = data.fen;
+        
         void evaluateWithFen(data.fen, LIVE_EVAL_DEPTH);
       }
     } catch {
@@ -303,10 +611,59 @@ export default function App() {
     await fetchGameState();
   }, [fetchGameState]);
 
+  // Sprawdza occupancy przed startem gry
+  const validateOccupancy = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API}/cv/occupancy`);
+      if (!res.ok) {
+        throw new Error("Nie można sprawdzić occupancy planszy.");
+      }
+      const data = (await res.json()) as OccupancyResponse;
+      
+      if (data.occupied_count !== 32) {
+        const expectedSquares = [
+          'a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1', // białe figury
+          'a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2', // białe pionki
+          'a7', 'b7', 'c7', 'd7', 'e7', 'f7', 'g7', 'h7', // czarne pionki
+          'a8', 'b8', 'c8', 'd8', 'e8', 'f8', 'g8', 'h8'  // czarne figury
+        ];
+        
+        const wronglyEmpty = expectedSquares.filter(sq => !data.occupied_squares.includes(sq));
+        const wronglyOccupied = data.occupied_squares.filter(sq => !expectedSquares.includes(sq));
+        
+        let errorMsg = `Wykryto ${data.occupied_count} figur zamiast 32. `;
+        if (wronglyEmpty.length > 0) {
+          errorMsg += `Brak figur na: ${wronglyEmpty.join(', ')}. `;
+        }
+        if (wronglyOccupied.length > 0) {
+          errorMsg += `Nieprawidłowo wykryte figury na: ${wronglyOccupied.join(', ')}.`;
+        }
+        
+        setOccupancyError(errorMsg);
+        return false;
+      }
+      
+      setOccupancyError(null);
+      return true;
+    } catch (e: unknown) {
+      setOccupancyError(e instanceof Error ? e.message : "Błąd walidacji planszy.");
+      return false;
+    }
+  };
+
   // Uruchamia detektor (inicjalizuje snapshot 'before' z kamery)
   const handleStart = async () => {
     setLiveLoading(true);
     setLiveError(null);
+    setOccupancyError(null);
+    
+    // Najpierw sprawdź occupancy
+    const occupancyValid = await validateOccupancy();
+    if (!occupancyValid) {
+      setLiveLoading(false);
+      return;
+    }
+    
     try {
       const res = await fetch(`${API}/cv/game/detector/start`, { method: "POST" });
       if (!res.ok) {
@@ -342,6 +699,7 @@ export default function App() {
         throw new Error(parseApiErrorPayload(data));
       }
       prevHistoryLenRef.current = 0;
+      prevFenRef.current = STARTING_FEN; // Reset FEN referencyjnego
       setResult(null);
       setError(null);
       await fetchGameState();
@@ -438,11 +796,34 @@ export default function App() {
   const handleFenChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setFen(val);
+    
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void evaluate(val);
     }, 600);
   };
+
+  // Debounced sound effect - unikaj wielokrotnych dźwięków przy szybkich zmianach
+  const soundDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Effect do synchronizacji dźwięków z wirtualną deską
+  useEffect(() => {
+    if (fen !== prevVirtualFenRef.current && fen.trim() && prevVirtualFenRef.current.trim()) {
+      // Wyczyść poprzedni timeout
+      if (soundDebounceRef.current) {
+        clearTimeout(soundDebounceRef.current);
+      }
+      
+      // Krótkie opóźnienie żeby zsynchronizować z animacją React Chessboard (280ms)
+      soundDebounceRef.current = setTimeout(() => {
+        const moveAnalysis = analyzeMoveType(prevVirtualFenRef.current, fen, gameState);
+        if (moveAnalysis) {
+          playMoveSound(moveAnalysis, gameState);
+        }
+      }, 280); // Dokładnie dopasowane do animationDurationInMs z BoardPanel
+    }
+    prevVirtualFenRef.current = fen;
+  }, [fen, gameState]);
 
   useEffect(() => {
     const el = boardColRef.current;
@@ -468,80 +849,52 @@ export default function App() {
       </header>
 
       <div className="board-col" ref={boardColRef}>
-        <BoardPanel
-          fen={fen}
-          bestMove={result?.best_move ?? null}
-          showBestMove={showBestMove}
-          boardWidth={boardWidth}
-          boardOrientation={boardOrientation}
-        />
-        <div className="board-controls">
-          <button
-            type="button"
-            className={`arrow-toggle${showBestMove ? " arrow-toggle--active" : ""}`}
-            onClick={() => setShowBestMove((v) => !v)}
-            aria-pressed={showBestMove}
-          >
-            {showBestMove ? "⟵ Ukryj strzałkę" : "⟶ Pokaż najlepszy ruch"}
-          </button>
-          <button
-            type="button"
-            className="flip-board-btn"
-            onClick={() => setBoardOrientation((o) => (o === "white" ? "black" : "white"))}
-            title="Obróć szachownicę o 180°"
-          >
-            ⟲ Obróć
-          </button>
-        </div>
-
-        {/* Info pod szachownicą: kolej i najlepszy ruch */}
-        <div className="board-info">
+        <div className="board-with-thermo">
+          <BoardPanel
+            fen={fen}
+            bestMove={result?.best_move ?? null}
+            showBestMove={showBestMove}
+            boardWidth={currentBoardSize}
+            boardOrientation={boardOrientation}
+          />
           {result ? (
-            <>
-              <div className="board-info-card">
-                <div className="bic-label">Kolej</div>
-                <div className="bic-val bic-val--turn">
-                  {result.turn === "white" ? (
-                    <>
-                      <span className="bic-piece bic-piece--plate-light" aria-hidden>
-                        ♟
-                      </span>
-                      <span>BIAŁE</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="bic-piece bic-piece--plate-dark" aria-hidden>
-                        ♙
-                      </span>
-                      <span>CZARNE</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="board-info-card">
-                <div className="bic-label">Najlepszy ruch</div>
-                <div className="bic-val bic-val--move">
-                  {result.best_move ? (
-                    <span className="move-arrow">
-                      {result.best_move.slice(0, 2)} → {result.best_move.slice(2, 4)}
-                      {result.best_move.length > 4 && result.best_move.slice(4)}
-                    </span>
-                  ) : (
-                    <span className="move-none">—</span>
-                  )}
-                </div>
-              </div>
-            </>
+            <Thermometer
+              score={result.score}
+              scoreType={result.score_type}
+              mateIn={result.mate_in}
+              loading={loading}
+              boardOrientation={boardOrientation}
+              boardSizePx={currentBoardSize}
+            />
           ) : (
-            <div className="board-info-placeholder">
-              Wykonaj analizę, aby zobaczyć szczegóły pozycji.
+            <div
+              className={`thermo-wrap${boardOrientation === "black" ? " thermo-wrap--from-black" : ""}`}
+            >
+              <div
+                className="thermo-bar thermo-bar--placeholder"
+                style={
+                  {
+                    "--thermo-black-pct": "50%",
+                    "--thermo-white-pct": "50%",
+                    height: `${currentBoardSize}px`,
+                  } as CSSProperties
+                }
+              >
+                <div className="thermo-black" />
+                <div className="thermo-white" />
+              </div>
             </div>
           )}
+          {/* Materiał obok termometru */}
+          <MaterialDisplay 
+            fen={fen} 
+            boardOrientation={boardOrientation}
+            boardSizePx={currentBoardSize}
+          />
         </div>
       </div>
 
-      <div className="input-panel">
-        {/* ===== SEKCJA LIVE GAME ===== */}
+      <div className="live-col">
         <div className="live-section">
           <div className="live-section-header">
             <span className="live-section-title">Live Camera</span>
@@ -625,8 +978,76 @@ export default function App() {
           </div>
 
           {liveError && <div className="error-msg">⚠ {liveError}</div>}
+          {occupancyError && <div className="error-msg occupancy-error"> {occupancyError}</div>}
         </div>
 
+        {/* Przyciski kontroli planszy pod Live Camera */}
+        <div className="board-controls">
+          <button
+            type="button"
+            className={`arrow-toggle${showBestMove ? " arrow-toggle--active" : ""}`}
+            onClick={() => setShowBestMove((v) => !v)}
+            aria-pressed={showBestMove}
+          >
+            {showBestMove ? "⟵ Ukryj strzałkę" : "⟶ Pokaż najlepszy ruch"}
+          </button>
+          <button
+            type="button"
+            className="flip-board-btn"
+            onClick={() => setBoardOrientation((o) => (o === "white" ? "black" : "white"))}
+            title="Obróć szachownicę o 180°"
+          >
+            ⟲ Obróć
+          </button>
+        </div>
+
+        {/* Info pod przyciskami: kolej i najlepszy ruch */}
+        <div className="board-info">
+          {result ? (
+            <>
+              <div className="board-info-card">
+                <div className="bic-label">Kolej</div>
+                <div className="bic-val bic-val--turn">
+                  {result.turn === "white" ? (
+                    <>
+                      <span className="bic-piece bic-piece--plate-light" aria-hidden>
+                        ♟
+                      </span>
+                      <span>BIAŁE</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="bic-piece bic-piece--plate-dark" aria-hidden>
+                        ♙
+                      </span>
+                      <span>CZARNE</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="board-info-card">
+                <div className="bic-label">Najlepszy ruch</div>
+                <div className="bic-val bic-val--move">
+                  {result.best_move ? (
+                    <span className="move-arrow">
+                      {result.best_move.slice(0, 2)} → {result.best_move.slice(2, 4)}
+                      {result.best_move.length > 4 && result.best_move.slice(4)}
+                    </span>
+                  ) : (
+                    <span className="move-none">—</span>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="board-info-placeholder">
+              Wykonaj analizę, aby zobaczyć szczegóły pozycji.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="input-panel">
         <div className="section-divider" />
 
         {/* ===== SEKCJA STOCKFISH ===== */}
@@ -776,46 +1197,6 @@ export default function App() {
         {error && <div className="error-msg">⚠ {error}</div>}
       </div>
 
-      {result ? (
-        <Thermometer
-          score={result.score}
-          scoreType={result.score_type}
-          mateIn={result.mate_in}
-          loading={loading}
-          boardOrientation={boardOrientation}
-        />
-      ) : (
-        <div
-          className={`thermo-wrap${boardOrientation === "black" ? " thermo-wrap--from-black" : ""}`}
-        >
-          <div className="thermo-labels">
-            <span className="thermo-label thermo-label--black">
-              <span className="thermo-piece" aria-hidden>
-                ♙
-              </span>
-            <span className="thermo-label-text">CZARNE</span>
-          </span>
-          <span className="thermo-label thermo-label--white">
-            <span className="thermo-piece" aria-hidden>
-              ♟
-            </span>
-            <span className="thermo-label-text">BIAŁE</span>
-            </span>
-          </div>
-          <div
-            className="thermo-bar thermo-bar--placeholder"
-            style={
-              {
-                "--thermo-black-pct": "50%",
-                "--thermo-white-pct": "50%",
-              } as CSSProperties
-            }
-          >
-            <div className="thermo-black" />
-            <div className="thermo-white" />
-          </div>
-        </div>
-      )}
     </main>
   );
 }

@@ -73,15 +73,15 @@ body {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: clamp(0.75rem, 3vw, 2rem);
+  padding: clamp(0.35rem, 1.2vw, 0.9rem);
   -webkit-font-smoothing: antialiased;
 }
 
 .app {
   width: 100%;
-  max-width: min(72rem, 100%);
+  max-width: min(110rem, 100%);
   margin-inline: auto;
-  padding: clamp(1.25rem, 3.5vw, 2.75rem);
+  padding: clamp(0.95rem, 1.8vw, 1.65rem);
   background: linear-gradient(
     152deg,
     rgba(22, 32, 28, 0.92) 0%,
@@ -92,13 +92,14 @@ body {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-panel);
   display: grid;
-  gap: clamp(1.25rem, 3vw, 2.25rem);
-  grid-template-columns: minmax(280px, 1fr) minmax(0, 1.2fr) minmax(10rem, 13rem);
-  grid-template-rows: auto auto 1fr;
+  row-gap: clamp(1rem, 2.2vw, 1.5rem);
+  column-gap: clamp(0.8rem, 2vw, 1.2rem);
+  grid-template-columns: minmax(34rem, 1.95fr) minmax(18rem, 1fr);
+  grid-template-rows: auto auto;
   grid-template-areas:
-    "head  head  head"
-    "board in    thermo"
-    "board in    thermo";
+    "head  head"
+    "board live"
+    "in    in";
   align-items: start;
   position: relative;
 }
@@ -164,15 +165,102 @@ body {
   grid-area: board;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
   position: relative;
   z-index: 1;
+  min-width: 0;
+}
+
+.board-with-thermo {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+/* ——— Wyświetlanie materiału (zbite figury) ——— */
+.material-display {
+  width: clamp(2.4rem, 3.8vw, 3.2rem);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin-left: 4px;
+}
+
+.material-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.material-section--top {
+  align-items: flex-start;
+}
+
+.material-section--top .captured-row {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.material-section--bottom {
+  align-items: flex-end;
+}
+
+.captured-pieces {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+}
+
+.captured-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 0.12rem;
+  width: 100%;
+}
+
+.captured-piece {
+  font-size: 1.3rem;
+  line-height: 1;
+  display: block;
+  text-align: center;
+}
+
+.captured-piece--white {
+  color: #f7f4ed;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+.captured-piece--black {
+  color: #2a2622;
+  text-shadow: 
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+.material-advantage {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--gold-bright);
+  background: var(--gold-dim);
+  padding: 0.1rem 0.25rem;
+  border-radius: calc(var(--radius-sm) - 3px);
+  letter-spacing: 0.03em;
+  margin-top: 0.15rem;
 }
 
 .board-panel {
-  width: 100%;
-  aspect-ratio: 1;
+  max-width: 100%;
   border-radius: 8px;
   overflow: hidden;
 }
@@ -244,7 +332,7 @@ body {
   flex-wrap: wrap;
   gap: 0.5rem;
   width: 100%;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 /* Przycisk obracania szachownicy */
@@ -390,6 +478,11 @@ body {
   gap: clamp(0.85rem, 2vw, 1.15rem);
   position: relative;
   z-index: 1;
+}
+
+.live-col {
+  grid-area: live;
+  min-width: 0;
 }
 
 .input-label {
@@ -652,20 +745,23 @@ button.reset-btn:focus-visible {
   line-height: 1.5;
 }
 
+.occupancy-error {
+  background: rgba(255, 140, 0, 0.12);
+  border-color: rgba(255, 140, 0, 0.35);
+  color: #ffb366;
+}
+
 /* ——— Termometr ——— */
 .thermo-wrap {
-  grid-area: thermo;
-  grid-row: 2 / -1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: clamp(1rem, 2.5vw, 1.35rem);
-  padding: clamp(0.5rem, 2vw, 1rem);
-  background: linear-gradient(180deg, var(--surface-muted) 0%, rgba(8, 14, 12, 0.9) 100%);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 rgba(212, 175, 88, 0.08);
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
   position: relative;
   z-index: 1;
 }
@@ -750,9 +846,9 @@ button.reset-btn:focus-visible {
 }
 
 .thermo-bar {
-  width: clamp(4rem, 12vw, 5.5rem);
-  height: clamp(18rem, 48vh, 26rem);
-  max-height: 420px;
+  width: clamp(2.8rem, 4.2vw, 3.6rem);
+  height: 100%;
+  min-height: clamp(16rem, 36vh, 22rem);
   border-radius: 0;
   overflow: hidden;
   display: flex;
@@ -774,19 +870,22 @@ button.reset-btn:focus-visible {
   box-sizing: border-box;
   pointer-events: none;
   font-family: var(--font-display);
-  font-size: clamp(1.15rem, 2.8vw, 1.65rem);
+  font-size: clamp(0.76rem, 1.6vw, 1rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
-  line-height: 1.1;
+  line-height: 1;
   text-align: center;
-  padding: 0.3rem 0.55rem;
+  padding: 0.16rem 0.08rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 /* „+” jest węższe niż cyfry — lekkie przesunięcie w lewo, żeby margines wyglądał symetrycznie */
 .thermo-score-overlay--white,
 .thermo-score-overlay--black {
-  transform: translateX(-0.06em);
+  transform: none;
 }
 
 /* Przewaga białych — segment u dołu: liczba przy podstawie wykresu */
@@ -821,11 +920,11 @@ button.reset-btn:focus-visible {
 .thermo-score-overlay--equal {
   left: 50%;
   top: 50%;
-  transform: translate(calc(-50% - 0.06em), -50%);
-  width: min(5.5rem, calc(100% - 1rem));
+  transform: translate(-50%, -50%);
+  width: calc(100% - 0.35rem);
   height: auto;
-  min-height: 2.25rem;
-  padding: 0.4rem 0.55rem;
+  min-height: 1.65rem;
+  padding: 0.2rem 0.12rem;
   place-items: center;
   place-content: center;
   border-radius: 0;
@@ -919,28 +1018,28 @@ button.reset-btn:focus-visible {
 /* ——— Tablet / wąski desktop (brak 3 kolumn) ——— */
 @media (max-width: 1100px) {
   .app {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
     grid-template-rows: auto;
     grid-template-areas:
-      "head"
-      "board"
-      "thermo"
-      "in";
+      "head head"
+      "board thermo"
+      "live  live"
+      "in    in";
+    column-gap: 0.8rem;
+    row-gap: 1rem;
   }
 
   .board-col {
-    max-width: 480px;
-    margin-inline: auto;
     width: 100%;
   }
 
   .thermo-wrap {
-    grid-row: auto;
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: center;
     align-items: flex-end;
     gap: 1.25rem 2rem;
+    margin-left: 0;
   }
 
   .thermo-labels {
@@ -964,7 +1063,7 @@ button.reset-btn:focus-visible {
   }
 
   .thermo-bar {
-    width: min(100%, 28rem);
+    width: min(100%, 20rem);
     height: clamp(4.75rem, 15vw, 6.25rem);
     max-height: none;
     flex-direction: row;
@@ -1013,6 +1112,18 @@ button.reset-btn:focus-visible {
 
   .thermo-score-overlay--equal {
     width: min(12rem, 88%);
+  }
+}
+
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "head"
+      "board"
+      "thermo"
+      "live"
+      "in";
   }
 }
 
