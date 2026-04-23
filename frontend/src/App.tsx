@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, ChangeEvent } from "react";
+import { Chess } from "chess.js";
 import "./App.css";
 import BoardPanel from "./BoardPanel";
 
@@ -339,6 +340,7 @@ const LIVE_POLL_INTERVAL_MS = 500;
 const LIVE_EVAL_DEPTH = 12;
 
 type StrengthMode = "full" | "elo" | "skill";
+type ViewTab = "live" | "analysis";
 
 /** Odpowiedź z backendu FastAPI /evaluate (EvalResponse) */
 export interface EvalResponse {
@@ -364,13 +366,15 @@ function formatScore(
   boardOrientation: "white" | "black"
 ): string {
   if (scoreType === "mate") {
-    if (mateIn == null) return "M?";
-    let displayMateIn = mateIn;
-    // Odwróć znak mata jeśli plansza jest od strony czarnych
-    if (boardOrientation === "black") {
-      displayMateIn = -mateIn;
+    // Dla mata opieramy znak o mateIn (+ = białe wygrywają, - = czarne wygrywają).
+    // To jest bardziej niezawodne niż score, które może być niespójne przy M0.
+    const signedMate = mateIn != null && mateIn > 0 ? 1 : -1;
+    const orientedSign = boardOrientation === "black" ? -signedMate : signedMate;
+    const mateDistance = Math.abs(mateIn ?? 0);
+    if (mateDistance === 0) {
+      return orientedSign > 0 ? "+M0" : "-M0";
     }
-    return displayMateIn > 0 ? `+M${displayMateIn}` : `-M${Math.abs(displayMateIn)}`;
+    return orientedSign > 0 ? `+M${mateDistance}` : `-M${mateDistance}`;
   }
   
   let displayScore = score;
@@ -404,6 +408,9 @@ function Thermometer({
   const CAP = 10;
   const rawPercent =
     scoreType === "mate"
+      // Dla mata opieramy kolor paska o mateIn (nie score):
+      // + mateIn = białe wygrywają (pasek biały 100%)
+      // - mateIn = czarne wygrywają (pasek czarny 0%)
       ? mateIn != null && mateIn > 0
         ? 100
         : 0
@@ -497,7 +504,9 @@ function buildEvaluatePayload(
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<ViewTab>("live");
   const [fen, setFen] = useState(STARTING_FEN);
+  const [analysisFen, setAnalysisFen] = useState(STARTING_FEN);
   const [result, setResult] = useState<EvalResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -509,7 +518,23 @@ export default function App() {
   const [strengthMode, setStrengthMode] = useState<StrengthMode>("full");
   const [eloLimit, setEloLimit] = useState(DEFAULT_ELO);
   const [skillLevel, setSkillLevel] = useState(DEFAULT_SKILL);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const currentBoardSize = Math.max(200, Math.floor(boardWidth * 0.6));
+
+  // Obsługa klawisza Escape w trybie fullscreen
+  useEffect(() => {
+    const handleEscape = (e: Event) => {
+      const keyEvent = e as globalThis.KeyboardEvent;
+      if (keyEvent.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    
+    if (isFullscreen) {
+      document.addEventListener("keydown", handleEscape);
+      return () => document.removeEventListener("keydown", handleEscape);
+    }
+  }, [isFullscreen]);
 
   // --- Stan live gry z kamery ---
   const [gameState, setGameState] = useState<GameStateResponse | null>(null);
@@ -542,8 +567,17 @@ export default function App() {
     }
   }, [detectorRunning, gameState]);
 
+  useEffect(() => {
+    if (activeTab !== "live" && detectorRunning) {
+      setDetectorRunning(false);
+    }
+    // Reset termometru przy przejściu między zakładkami
+    setResult(null);
+    setError(null);
+  }, [activeTab, detectorRunning]);
+
   const evaluate = useCallback(async (fenOverride?: string) => {
-    const fenToUse = fenOverride ?? fen;
+    const fenToUse = fenOverride ?? analysisFen;
     if (!fenToUse.trim()) return;
     setLoading(true);
     setError(null);
@@ -567,7 +601,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [fen]);
+  }, [analysisFen]);
 
   // Pobiera aktualny stan gry z backendu i synchronizuje FEN planszy
   const fetchGameState = useCallback(async () => {
@@ -795,13 +829,68 @@ export default function App() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleFenChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    setFen(val);
+    setAnalysisFen(val);
     
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void evaluate(val);
     }, 600);
   };
+
+  const handleAnalysisPieceDrop = useCallback(
+    ({
+      sourceSquare,
+      targetSquare,
+    }: {
+      sourceSquare: string;
+      targetSquare: string | null;
+      piece: unknown;
+    }): boolean => {
+      if (activeTab !== "analysis") return false;
+      if (!targetSquare) return false;
+
+      try {
+        const game = new Chess(analysisFen);
+        // Sprawdź czy ruch to promocja piona:
+        // 1. Figura na polu źródłowym to pion
+        // 2. Pole docelowe to linia promocji (1 dla czarnych, 8 dla białych)
+        const sourcePiece = game.get(sourceSquare as Parameters<typeof game.get>[0]);
+        const isPawn = sourcePiece && sourcePiece.type === "p";
+        const targetRank = parseInt(targetSquare[1]);
+        
+        // Biały pion na linię 8, czarny pion na linię 1
+        const isPromotion = isPawn && 
+          ((sourcePiece.color === "w" && targetRank === 8) || 
+           (sourcePiece.color === "b" && targetRank === 1));
+
+        const moveResult = game.move({
+          from: sourceSquare,
+          to: targetSquare,
+          ...(isPromotion ? { promotion: "q" } : {}),
+        });
+
+        if (!moveResult) {
+          const targetPiece = game.get(targetSquare as Parameters<typeof game.get>[0]);
+          const targetOccupied = targetPiece != null;
+          const hint =
+            isPawn && targetSquare[0] === sourceSquare[0] && targetOccupied
+              ? "Pion nie może bić na wprost. Jeśli b8 jest zajęte, zbijasz tylko na skos (a8/c8)."
+              : "Sprawdź czy to właściwa kolej i czy ruch jest legalny.";
+          setError(`Nielegalny ruch ${sourceSquare} -> ${targetSquare}. ${hint}`);
+          return false;
+        }
+
+        const nextFen = game.fen();
+        setAnalysisFen(nextFen);
+        setError(null);
+        void evaluate(nextFen);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [activeTab, analysisFen, evaluate]
+  );
 
   // Debounced sound effect - unikaj wielokrotnych dźwięków przy szybkich zmianach
   const soundDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -836,8 +925,15 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
+  const boardFen = activeTab === "analysis" ? analysisFen : fen;
+  const fullscreenBoardSize = Math.min(
+    window.innerHeight - 80,
+    window.innerWidth - 80
+  );
+
   return (
-    <main className="app">
+    <>
+    <main className={`app app--${activeTab}`}>
       <header className="header">
         <h1>
           Chess <span className="title-live">Live</span>{" "}
@@ -846,16 +942,38 @@ export default function App() {
         <p>
           Analiza pozycji · <strong>Stockfish 18</strong> · silnik UCI · MVP v0.1
         </p>
+        <div className="view-tabs" role="tablist" aria-label="Tryb widoku">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "live"}
+            className={`view-tab${activeTab === "live" ? " view-tab--active" : ""}`}
+            onClick={() => setActiveTab("live")}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "analysis"}
+            className={`view-tab${activeTab === "analysis" ? " view-tab--active" : ""}`}
+            onClick={() => setActiveTab("analysis")}
+          >
+            Analiza statycznej pozycji
+          </button>
+        </div>
       </header>
 
       <div className="board-col" ref={boardColRef}>
         <div className="board-with-thermo">
           <BoardPanel
-            fen={fen}
+            fen={boardFen}
             bestMove={result?.best_move ?? null}
             showBestMove={showBestMove}
             boardWidth={currentBoardSize}
             boardOrientation={boardOrientation}
+            allowDragging={activeTab === "analysis"}
+            onPieceDrop={handleAnalysisPieceDrop}
           />
           {result ? (
             <Thermometer
@@ -887,13 +1005,14 @@ export default function App() {
           )}
           {/* Materiał obok termometru */}
           <MaterialDisplay 
-            fen={fen} 
+            fen={boardFen} 
             boardOrientation={boardOrientation}
             boardSizePx={currentBoardSize}
           />
         </div>
       </div>
 
+      {activeTab === "live" && (
       <div className="live-col">
         <div className="live-section">
           <div className="live-section-header">
@@ -999,6 +1118,14 @@ export default function App() {
           >
             ⟲ Obróć
           </button>
+          <button
+            type="button"
+            className="fullscreen-btn"
+            onClick={() => setIsFullscreen(true)}
+            title="Pełny ekran"
+          >
+            ⛶ Pełny ekran
+          </button>
         </div>
 
         {/* Info pod przyciskami: kolej i najlepszy ruch */}
@@ -1046,7 +1173,9 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
 
+      {activeTab === "analysis" && (
       <div className="input-panel">
         <div className="section-divider" />
 
@@ -1056,7 +1185,7 @@ export default function App() {
         </label>
         <textarea
           id="fen-input"
-          value={fen}
+          value={analysisFen}
           onChange={handleFenChange}
           onKeyDown={handleKey}
           placeholder="Wklej notację FEN…"
@@ -1184,6 +1313,7 @@ export default function App() {
             onClick={() => {
               setResult(null);
               setError(null);
+              setAnalysisFen(STARTING_FEN);
               setDepth(DEFAULT_DEPTH);
               setStrengthMode("full");
               setEloLimit(DEFAULT_ELO);
@@ -1196,7 +1326,68 @@ export default function App() {
         </div>
         {error && <div className="error-msg">⚠ {error}</div>}
       </div>
+      )}
 
     </main>
+    
+    {/* Fullscreen overlay */}
+    {isFullscreen && (
+      <div 
+        className="fullscreen-overlay"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setIsFullscreen(false);
+          }
+        }}
+      >
+        <div className="fullscreen-board-container">
+          <div className="fullscreen-board-with-thermo">
+            <BoardPanel
+              fen={boardFen}
+              bestMove={result?.best_move ?? null}
+              showBestMove={showBestMove}
+              boardWidth={fullscreenBoardSize}
+              boardOrientation={boardOrientation}
+              allowDragging={activeTab === "analysis"}
+              onPieceDrop={handleAnalysisPieceDrop}
+            />
+            {result ? (
+              <Thermometer
+                score={result.score}
+                scoreType={result.score_type}
+                mateIn={result.mate_in}
+                loading={loading}
+                boardOrientation={boardOrientation}
+                boardSizePx={fullscreenBoardSize}
+              />
+            ) : (
+              <div
+                className={`thermo-wrap${boardOrientation === "black" ? " thermo-wrap--from-black" : ""}`}
+              >
+                <div
+                  className="thermo-bar thermo-bar--placeholder"
+                  style={
+                    {
+                      "--thermo-black-pct": "50%",
+                      "--thermo-white-pct": "50%",
+                      height: `${fullscreenBoardSize}px`,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="thermo-black" />
+                  <div className="thermo-white" />
+                </div>
+              </div>
+            )}
+            <MaterialDisplay 
+              fen={boardFen} 
+              boardOrientation={boardOrientation}
+              boardSizePx={fullscreenBoardSize}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

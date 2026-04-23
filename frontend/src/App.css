@@ -104,6 +104,18 @@ body {
   position: relative;
 }
 
+.app--live {
+  grid-template-areas:
+    "head  head"
+    "board live";
+}
+
+.app--analysis {
+  grid-template-areas:
+    "head  head"
+    "board in";
+}
+
 /* Cienka „ramka szachownicy” w rogu panelu */
 .app::before {
   content: "";
@@ -158,6 +170,38 @@ body {
   color: var(--gold);
   font-weight: 600;
   letter-spacing: 0.04em;
+}
+
+.view-tabs {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.view-tab {
+  min-height: 2.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.view-tab:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.view-tab--active {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+  border-color: var(--gold);
 }
 
 /* ——— Kolumna szachownicy ——— */
@@ -329,14 +373,22 @@ body {
 /* Kontener przycisków pod szachownicą */
 .board-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
+  gap: 0.85rem;
   width: 100%;
-  justify-content: flex-start;
+  justify-content: space-between;
+  margin-top: 0.9rem;
+}
+
+.board-controls > button {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
 }
 
 /* Przycisk obracania szachownicy */
-.flip-board-btn {
+.flip-board-btn,
+.fullscreen-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -358,20 +410,55 @@ body {
     transform 0.12s;
 }
 
-.flip-board-btn:hover {
+.flip-board-btn:hover,
+.fullscreen-btn:hover {
   color: var(--text);
   border-color: var(--border-strong);
   background: var(--surface-elevated);
   transform: scale(1.02);
 }
 
-.flip-board-btn:active {
+.flip-board-btn:active,
+.fullscreen-btn:active {
   transform: scale(0.98);
 }
 
-.flip-board-btn:focus-visible {
+.flip-board-btn:focus-visible,
+.fullscreen-btn:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
+}
+
+/* Fullscreen overlay */
+.fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(5, 6, 7, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: pointer;
+}
+
+.fullscreen-board-container {
+  cursor: default;
+  border-radius: 12px;
+  padding: 8px;
+  background: linear-gradient(
+    145deg,
+    rgba(22, 32, 28, 0.3) 0%,
+    rgba(12, 18, 16, 0.2) 100%
+  );
+}
+
+.fullscreen-board-with-thermo {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 /* Info pod szachownicą: kolej i najlepszy ruch */
@@ -495,7 +582,8 @@ body {
 
 textarea {
   width: 100%;
-  min-height: clamp(7.5rem, 22vh, 11rem);
+  min-height: clamp(4.2rem, 11vh, 6rem);
+  max-height: 6rem;
   background: var(--surface-muted);
   border: 2px solid var(--border);
   border-radius: var(--radius);
@@ -503,7 +591,7 @@ textarea {
   font-family: var(--font-ui);
   font-size: var(--step-0);
   padding: clamp(1rem, 2.5vw, 1.25rem);
-  resize: vertical;
+  resize: none;
   outline: none;
   line-height: 1.65;
   transition:
@@ -1029,6 +1117,16 @@ button.reset-btn:focus-visible {
     row-gap: 1rem;
   }
 
+  .app--live,
+  .app--analysis {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "head"
+      "board"
+      "live"
+      "in";
+  }
+
   .board-col {
     width: 100%;
   }
@@ -1116,12 +1214,13 @@ button.reset-btn:focus-visible {
 }
 
 @media (max-width: 760px) {
-  .app {
+  .app,
+  .app--live,
+  .app--analysis {
     grid-template-columns: 1fr;
     grid-template-areas:
       "head"
       "board"
-      "thermo"
       "live"
       "in";
   }

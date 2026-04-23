@@ -143,3 +143,25 @@ class CollectResponse(BaseModel):
     occupied_saved: int
     empty_saved: int
     fen_used: str
+
+
+class MoveCollectRequest(BaseModel):
+    move_uci: str
+
+
+class MoveCollectResponse(BaseModel):
+    ok: bool
+    move_uci: str
+    fen_after: str
+    occupied_saved: int
+    empty_saved: int
+    message: str
+
+
+class UndoMoveCollectResponse(BaseModel):
+    ok: bool
+    undone_move_uci: str
+    fen_after_undo: str
+    occupied_deleted: int
+    empty_deleted: int
+    message: str

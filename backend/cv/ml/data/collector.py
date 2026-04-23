@@ -144,6 +144,97 @@ def collect_from_frame(
     return n_occ, n_emp, fen
 
 
+def collect_from_frame_with_batch(
+    warped: np.ndarray,
+    fen: str,
+    augment: bool = AUGMENT_ON_COLLECT,
+) -> tuple[int, int, str, str]:
+    """
+    Jak collect_from_frame(), ale dodatkowo zwraca batch_id (prefix timestamp).
+    """
+    if warped.shape[:2] != (BOARD_SIZE_PX, BOARD_SIZE_PX):
+        raise ValueError(
+            f"Oczekiwano {BOARD_SIZE_PX}×{BOARD_SIZE_PX}px, "
+            f"otrzymano {warped.shape[1]}×{warped.shape[0]}px."
+        )
+
+    occupied_squares = _fen_to_occupied_set(fen)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:19]
+
+    gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    proc = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    occ_dir, emp_dir = _ensure_dirs()
+    n_occ = 0
+    n_emp = 0
+
+    for row in range(8):
+        for col in range(8):
+            sq = chess.square(col, 7 - row)
+            sq_name = chess.square_name(sq)
+
+            x1 = col * CELL_SIZE_PX + CELL_MARGIN_PX
+            y1 = row * CELL_SIZE_PX + CELL_MARGIN_PX
+            x2 = (col + 1) * CELL_SIZE_PX - CELL_MARGIN_PX
+            y2 = (row + 1) * CELL_SIZE_PX - CELL_MARGIN_PX
+            patch = proc[y1:y2, x1:x2]
+            patch_resized = cv2.resize(patch, (PATCH_SIZE, PATCH_SIZE))
+
+            is_occupied = sq_name in occupied_squares
+            target_dir = occ_dir if is_occupied else emp_dir
+            prefix = f"{ts}_{sq_name}"
+
+            _save_patch(patch_resized, target_dir, f"{prefix}_orig")
+            if augment:
+                for i, aug_patch in enumerate(augment_patch(patch_resized)):
+                    _save_patch(aug_patch, target_dir, f"{prefix}_aug{i}")
+
+            if is_occupied:
+                n_occ += 1 + (N_AUGMENTS if augment else 0)
+            else:
+                n_emp += 1 + (N_AUGMENTS if augment else 0)
+
+    logger.info(
+        "Zebrano batch=%s: %d occupied, %d empty (FEN: %s...)",
+        ts, n_occ, n_emp, fen[:30],
+    )
+    return n_occ, n_emp, fen, ts
+
+
+def delete_batch(batch_id: str) -> dict:
+    """
+    Usuwa wszystkie pliki datasetu należące do wskazanego batcha.
+    """
+    if not re.fullmatch(r"\d{8}_\d{6}_\d{3}", batch_id):
+        raise ValueError(f"Nieprawidłowy batch_id: {batch_id}")
+
+    occ_dir = DATASET_DIR / "occupied"
+    emp_dir = DATASET_DIR / "empty"
+
+    def _delete_matching(directory: Path) -> int:
+        if not directory.exists():
+            return 0
+        deleted = 0
+        for path in directory.glob(f"{batch_id}_*.jpg"):
+            path.unlink(missing_ok=True)
+            deleted += 1
+        return deleted
+
+    occ_deleted = _delete_matching(occ_dir)
+    emp_deleted = _delete_matching(emp_dir)
+
+    logger.info(
+        "Usunieto batch=%s: occupied=%d, empty=%d",
+        batch_id, occ_deleted, emp_deleted,
+    )
+    return {
+        "batch_id": batch_id,
+        "occupied_deleted": occ_deleted,
+        "empty_deleted": emp_deleted,
+        "total_deleted": occ_deleted + emp_deleted,
+    }
+
+
 def get_dataset_stats() -> dict:
     """
     Zwraca statystyki zebranego datasetu.

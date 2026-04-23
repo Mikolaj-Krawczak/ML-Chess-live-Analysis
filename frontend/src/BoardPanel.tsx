@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 import { Chessboard } from "react-chessboard";
-import type { Arrow } from "react-chessboard/dist/types";
 import { Chess } from "chess.js";
+
+type Arrow = {
+  startSquare: string;
+  endSquare: string;
+  color: string;
+};
 
 interface BoardPanelProps {
   fen: string;
@@ -9,6 +14,12 @@ interface BoardPanelProps {
   showBestMove: boolean;
   boardWidth: number;
   boardOrientation: "white" | "black";
+  allowDragging?: boolean;
+  onPieceDrop?: (args: {
+    sourceSquare: string;
+    targetSquare: string | null;
+    piece: unknown;
+  }) => boolean;
 }
 
 /**
@@ -22,6 +33,8 @@ export default function BoardPanel({
   showBestMove,
   boardWidth,
   boardOrientation,
+  allowDragging = false,
+  onPieceDrop,
 }: BoardPanelProps) {
   const isValidFen = useMemo(() => {
     try {
@@ -61,8 +74,9 @@ export default function BoardPanel({
           position: fen,
           boardOrientation,
           showNotation: true,
-          allowDragging: false,
+          allowDragging,
           allowDrawingArrows: false,
+          onPieceDrop,
           arrows,
           arrowOptions: {
             color: "#111111",

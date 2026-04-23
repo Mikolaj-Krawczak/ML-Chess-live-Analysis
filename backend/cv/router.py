@@ -17,6 +17,8 @@ Etap 1 — gra:
   GET  /cv/game/state
   POST /cv/game/reset
   POST /cv/game/move
+  POST /cv/game/move-collect
+  POST /cv/game/move-collect/undo
   POST /cv/game/detector/start
   POST /cv/game/detector/tick
 
@@ -46,9 +48,12 @@ from .models import (
     GameResetRequest,
     GameStateResponse,
     ManualMoveRequest,
+    MoveCollectRequest,
+    MoveCollectResponse,
     MoveResultResponse,
     OccupancyResponse,
     SnapshotResponse,
+    UndoMoveCollectResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,6 +62,7 @@ router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
 # Singleton detektora ruchów
 _detector = move_detector.MoveDetector()
+_move_collect_history: list[dict] = []
 
 
 # ---------------------------------------------------------------------------
@@ -706,10 +712,12 @@ def get_game_state():
 @router.post("/game/reset")
 def reset_game(req: GameResetRequest):
     """Resetuje grę do podanego FEN. Po resecie wywołaj /game/detector/start."""
+    global _move_collect_history
     try:
         game_state.reset(req.fen)
     except ValueError as exc:
         raise HTTPException(422, detail=f"Nieprawidłowy FEN: {exc}")
+    _move_collect_history = []
     return {"ok": True, "fen": req.fen, "message": "Gra zresetowana."}
 
 
@@ -729,6 +737,116 @@ def manual_move(req: ManualMoveRequest):
                               fen_after=game_state.get_fen(),
                               reason="Ruch ręczny.",
                               detector_state=_detector.state_name)
+
+
+# ---------------------------------------------------------------------------
+# POST /cv/game/move-collect
+# ---------------------------------------------------------------------------
+
+
+@router.post("/game/move-collect", response_model=MoveCollectResponse)
+def move_collect(req: MoveCollectRequest):
+    """
+    Pipeline do budowy datasetu:
+    1) waliduje i wykonuje ruch UCI na game_state,
+    2) natychmiast zbiera próbki przez /ml/collect logikę,
+    3) zwraca FEN po ruchu oraz liczbę zapisanych patchy.
+    """
+    try:
+        game_state.push(req.move_uci)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc))
+
+    try:
+        try:
+            frame = camera.fetch_snapshot()
+        except RuntimeError as exc:
+            raise HTTPException(503, detail=str(exc))
+        try:
+            warped = calibration.apply_warp(frame)
+        except RuntimeError as exc:
+            raise HTTPException(409, detail=str(exc))
+
+        from .ml.data.collector import collect_from_frame_with_batch  # noqa: PLC0415
+        current_fen = game_state.get_fen()
+        try:
+            occ, emp, fen_used, batch_id = collect_from_frame_with_batch(warped, current_fen)
+        except Exception as exc:
+            raise HTTPException(500, detail=f"Blad collectora: {exc}")
+    except HTTPException:
+        # Pipeline atomowy: gdy collect się nie powiedzie, cofamy wykonany ruch.
+        try:
+            game_state.undo_last_move()
+        except ValueError:
+            logger.warning("Nie udalo sie cofnac ruchu po nieudanym move-collect.")
+        raise
+
+    _move_collect_history.append(
+        {
+            "move_uci": req.move_uci,
+            "batch_id": batch_id,
+            "occupied_saved": occ,
+            "empty_saved": emp,
+        }
+    )
+
+    return MoveCollectResponse(
+        ok=True,
+        move_uci=req.move_uci,
+        fen_after=fen_used,
+        occupied_saved=occ,
+        empty_saved=emp,
+        message=f"Ruch zaakceptowany. Zapisano {occ} occupied i {emp} empty.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /cv/game/move-collect/undo
+# ---------------------------------------------------------------------------
+
+
+@router.post("/game/move-collect/undo", response_model=UndoMoveCollectResponse)
+def undo_move_collect():
+    """
+    Cofa ostatni ruch wykonany przez pipeline move-collect i usuwa jego batch danych.
+    """
+    if not _move_collect_history:
+        raise HTTPException(409, detail="Brak ruchu move-collect do cofnięcia.")
+
+    last = _move_collect_history[-1]
+
+    try:
+        undone = game_state.undo_last_move()
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+    if undone != last["move_uci"]:
+        raise HTTPException(
+            409,
+            detail=(
+                "Niespójność historii: ostatni ruch na planszy różni się od move-collect. "
+                "Zrób reset gry i rozpocznij nową sesję datasetu."
+            ),
+        )
+
+    from .ml.data.collector import delete_batch  # noqa: PLC0415
+    try:
+        deleted = delete_batch(last["batch_id"])
+    except Exception as exc:
+        raise HTTPException(500, detail=f"Blad usuwania batcha: {exc}")
+
+    _move_collect_history.pop()
+    return UndoMoveCollectResponse(
+        ok=True,
+        undone_move_uci=undone,
+        fen_after_undo=game_state.get_fen(),
+        occupied_deleted=deleted["occupied_deleted"],
+        empty_deleted=deleted["empty_deleted"],
+        message=(
+            f"Cofnieto ruch {undone}. "
+            f"Usunieto occupied={deleted['occupied_deleted']}, empty={deleted['empty_deleted']}."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -808,6 +926,189 @@ def evaluate_current():
         return {"fen": current_fen, "source": "game_state", "evaluation": result}
     except Exception as exc:
         raise HTTPException(500, detail=f"Blad Stockfisha: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# GET /cv/ml/dataset/ui
+# ---------------------------------------------------------------------------
+
+_DATASET_UI_HTML = """<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dataset Collector</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:#101317;color:#e5e7eb;font-family:monospace}
+  .wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr 380px;gap:16px}
+  .card{background:#171b21;border:1px solid #2a3240;border-radius:8px;padding:14px}
+  h1{margin:0 0 10px;font-size:20px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input{flex:1;min-width:200px;background:#0f1318;border:1px solid #374151;color:#e5e7eb;padding:9px 10px;border-radius:6px}
+  button{border:none;border-radius:6px;padding:9px 12px;cursor:pointer;font-weight:700}
+  #btn-submit{background:#22c55e;color:#052e16}
+  #btn-refresh{background:#3b82f6;color:#eff6ff}
+  #btn-reset{background:#f59e0b;color:#111827}
+  #btn-undo{background:#ef4444;color:#fff}
+  #status{margin-top:10px;min-height:24px}
+  .ok{color:#86efac}.err{color:#fca5a5}.info{color:#93c5fd}
+  .mono{font-family:Consolas,monospace;word-break:break-all;font-size:13px}
+  img{width:100%;height:auto;border-radius:6px;border:1px solid #374151;background:#000}
+  .hint{margin-top:10px;color:#9ca3af;font-size:12px;line-height:1.5}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <h1>Move -> Validate -> Collect</h1>
+      <div class="row">
+        <input id="move" placeholder="Wpisz ruch UCI, np. e2e4" autocomplete="off" />
+        <button id="btn-submit">Wyślij ruch</button>
+        <button id="btn-refresh">Odśwież obraz</button>
+        <button id="btn-reset">Reset do startu</button>
+        <button id="btn-undo">Cofnij ostatni ruch</button>
+      </div>
+      <div id="status" class="info">Gotowe. Wpisz ruch UCI i Enter.</div>
+      <div class="hint">
+        Pipeline działa automatycznie: poprawny ruch wywołuje collect od razu.<br>
+        Po sukcesie wypisywany jest aktualny FEN do szybkiej kontroli ustawienia deski.
+      </div>
+    </section>
+    <aside class="card">
+      <div><strong>Live podgląd warped</strong></div>
+      <img id="warped" src="/cv/snapshot/warped.jpg" alt="warped board preview" />
+      <div style="margin-top:10px"><strong>FEN po ruchu</strong></div>
+      <div id="fen" class="mono">-</div>
+      <div style="margin-top:10px"><strong>Kolej ruchu</strong></div>
+      <div id="turn" class="mono">-</div>
+      <div style="margin-top:10px"><strong>Ostatni ruch</strong></div>
+      <div id="last-move" class="mono">-</div>
+      <div style="margin-top:10px"><strong>Zapisane próbki</strong></div>
+      <div id="counts" class="mono">occupied: -, empty: -</div>
+    </aside>
+  </div>
+
+<script>
+const moveInput = document.getElementById('move');
+const statusEl = document.getElementById('status');
+const fenEl = document.getElementById('fen');
+const turnEl = document.getElementById('turn');
+const lastMoveEl = document.getElementById('last-move');
+const countsEl = document.getElementById('counts');
+const warpedEl = document.getElementById('warped');
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+function setStatus(text, type) {
+  statusEl.textContent = text;
+  statusEl.className = type;
+}
+
+function refreshWarped() {
+  warpedEl.src = '/cv/snapshot/warped.jpg?t=' + Date.now();
+}
+
+async function refreshGameState() {
+  try {
+    const resp = await fetch('/cv/game/state');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    fenEl.textContent = data.fen || '-';
+    turnEl.textContent = data.turn || '-';
+    const history = Array.isArray(data.history) ? data.history : [];
+    lastMoveEl.textContent = history.length ? history[history.length - 1] : '-';
+  } catch (_) {}
+}
+
+async function resetToStart() {
+  setStatus('Reset pozycji startowej...', 'info');
+  try {
+    const resp = await fetch('/cv/game/reset', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fen: START_FEN}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      setStatus('Blad resetu: ' + (data.detail || resp.statusText), 'err');
+      return;
+    }
+    await refreshGameState();
+    setStatus('OK: reset do pozycji startowej (white to move).', 'ok');
+  } catch (err) {
+    setStatus('Blad polaczenia z backendem: ' + err, 'err');
+  }
+}
+
+async function sendMove() {
+  const move = moveInput.value.trim().toLowerCase();
+  if (!move) {
+    setStatus('Podaj ruch UCI.', 'err');
+    return;
+  }
+
+  setStatus('Walidacja ruchu i collect w toku...', 'info');
+  try {
+    const resp = await fetch('/cv/game/move-collect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({move_uci: move}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      setStatus('Blad: ' + (data.detail || resp.statusText), 'err');
+      await refreshGameState();
+      return;
+    }
+
+    fenEl.textContent = data.fen_after || '-';
+    await refreshGameState();
+    countsEl.textContent = `occupied: ${data.occupied_saved}, empty: ${data.empty_saved}`;
+    setStatus('OK: ruch przyjety i collect wykonany.', 'ok');
+    moveInput.value = '';
+    refreshWarped();
+  } catch (err) {
+    setStatus('Blad polaczenia z backendem: ' + err, 'err');
+  }
+}
+
+async function undoLastMove() {
+  setStatus('Cofanie ostatniego ruchu i usuwanie batcha...', 'info');
+  try {
+    const resp = await fetch('/cv/game/move-collect/undo', { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) {
+      setStatus('Blad cofania: ' + (data.detail || resp.statusText), 'err');
+      await refreshGameState();
+      return;
+    }
+    countsEl.textContent = `occupied: -${data.occupied_deleted}, empty: -${data.empty_deleted}`;
+    await refreshGameState();
+    refreshWarped();
+    setStatus('OK: ruch cofniety, batch usuniety.', 'ok');
+  } catch (err) {
+    setStatus('Blad polaczenia z backendem: ' + err, 'err');
+  }
+}
+
+document.getElementById('btn-submit').addEventListener('click', sendMove);
+document.getElementById('btn-refresh').addEventListener('click', refreshWarped);
+document.getElementById('btn-reset').addEventListener('click', resetToStart);
+document.getElementById('btn-undo').addEventListener('click', undoLastMove);
+moveInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendMove();
+});
+refreshWarped();
+refreshGameState();
+</script>
+</body>
+</html>"""
+
+
+@router.get("/ml/dataset/ui", response_class=HTMLResponse)
+def ml_dataset_ui():
+    """Prosty panel do zbierania datasetu przez pipeline move->collect."""
+    return HTMLResponse(content=_DATASET_UI_HTML)
 
 
 # ---------------------------------------------------------------------------
