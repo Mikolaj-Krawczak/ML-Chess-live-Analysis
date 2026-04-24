@@ -129,8 +129,8 @@ body {
 /* ——— Nagłówek ——— */
 .header {
   grid-area: head;
-  padding-bottom: clamp(1rem, 2.5vw, 1.5rem);
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+  border-bottom: none;
   position: relative;
   z-index: 1;
 }
@@ -177,6 +177,7 @@ body {
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .view-tab {

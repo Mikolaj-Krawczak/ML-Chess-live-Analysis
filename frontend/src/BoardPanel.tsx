@@ -55,7 +55,7 @@ export default function BoardPanel({
   if (!isValidFen) {
     return (
       <div className="board-panel board-panel--invalid">
-        <p className="board-invalid-msg">Nieprawidłowa notacja FEN</p>
+        <p className="board-invalid-msg">Invalid FEN notation</p>
       </div>
     );
   }

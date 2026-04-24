@@ -11,22 +11,22 @@ val_split: 0.2                        # 20% danych jako zbiór walidacyjny
 dropout: 0.5                          # regularyzacja dropout w FC
 
 # --- Trening ---
-epochs: 25                            # liczba epok (20-30 wystarczy)
-batch_size: 32                        # powiększ do 64 jeśli masz dużo RAM
-learning_rate: 0.001                  # Adam lr; zmniejsz do 0.0003 jeśli loss oscyluje
-weight_decay: 0.0001                  # L2 regularyzacja
+epochs: 50                            # długie szkolenie dla najlepszych efektów
+batch_size: 32                        # optymalny dla CPU i 32GB RAM
+learning_rate: 0.0003                 # bardzo precyzyjny learning rate
+weight_decay: 0.00001                 # delikatniejsza regularyzacja dla długiego treningu
 
 # --- Early stopping ---
-patience: 7                           # zatrzymaj jeśli val_loss nie poprawia się przez N epok
+patience: 15                         # duża cierpliwość - pozwól modelowi się uczyć
 
 # --- Scheduler ---
-# lr zmniejsza się o factor co step_size epok (np. 0.1 × lr co 10 epok)
-lr_scheduler_factor: 0.1
-lr_scheduler_step_size: 10
+# lr zmniejsza się o factor co step_size epok - powolne dostrajanie
+lr_scheduler_factor: 0.3
+lr_scheduler_step_size: 15
 
 # --- Zapis ---
 weights_out: "cv/ml/weights/square_classifier.pth"  # względem backend/
 save_best_only: true                  # zachowaj tylko najlepsze wagi (val_loss)
 
 # --- Logi ---
-log_interval: 5                       # wyświetlaj postęp co N batchy
+log_interval: 10                   # mniej logów dla długiego treningu

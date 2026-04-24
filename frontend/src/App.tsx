@@ -43,7 +43,7 @@ class ChessAudio {
       // Natychmiastowe odtwarzanie
       const playPromise = audio.play();
       if (playPromise) {
-        playPromise.catch(err => console.warn('Nie można odtworzyć dźwięku:', err));
+        playPromise.catch(err => console.warn("Cannot play sound:", err));
       }
     }
   }
@@ -468,7 +468,7 @@ function Thermometer({
 
 /** Wyciąga komunikat błędu z odpowiedzi FastAPI (detail: string | tablica walidacji) */
 function parseApiErrorPayload(data: unknown): string {
-  if (typeof data !== "object" || data === null) return "Błąd serwera";
+  if (typeof data !== "object" || data === null) return "Server error";
   const d = data as { detail?: unknown };
   if (typeof d.detail === "string") return d.detail;
   if (Array.isArray(d.detail)) {
@@ -481,7 +481,7 @@ function parseApiErrorPayload(data: unknown): string {
       })
       .join("; ");
   }
-  return "Błąd serwera";
+  return "Server error";
 }
 
 function buildEvaluatePayload(
@@ -597,7 +597,7 @@ export default function App() {
       }
       setResult(data as EvalResponse);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Nieznany błąd");
+      setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -629,7 +629,7 @@ export default function App() {
         void evaluateWithFen(data.fen, LIVE_EVAL_DEPTH);
       }
     } catch {
-      setLiveError("Brak połączenia z backendem CV.");
+      setLiveError("No connection to CV backend.");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -650,7 +650,7 @@ export default function App() {
     try {
       const res = await fetch(`${API}/cv/occupancy`);
       if (!res.ok) {
-        throw new Error("Nie można sprawdzić occupancy planszy.");
+        throw new Error("Cannot validate board occupancy.");
       }
       const data = (await res.json()) as OccupancyResponse;
       
@@ -667,10 +667,10 @@ export default function App() {
         
         let errorMsg = `Wykryto ${data.occupied_count} figur zamiast 32. `;
         if (wronglyEmpty.length > 0) {
-          errorMsg += `Brak figur na: ${wronglyEmpty.join(', ')}. `;
+          errorMsg += `Missing pieces on: ${wronglyEmpty.join(', ')}. `;
         }
         if (wronglyOccupied.length > 0) {
-          errorMsg += `Nieprawidłowo wykryte figury na: ${wronglyOccupied.join(', ')}.`;
+          errorMsg += `Incorrectly detected pieces on: ${wronglyOccupied.join(', ')}.`;
         }
         
         setOccupancyError(errorMsg);
@@ -680,7 +680,7 @@ export default function App() {
       setOccupancyError(null);
       return true;
     } catch (e: unknown) {
-      setOccupancyError(e instanceof Error ? e.message : "Błąd walidacji planszy.");
+      setOccupancyError(e instanceof Error ? e.message : "Board validation error.");
       return false;
     }
   };
@@ -707,7 +707,7 @@ export default function App() {
       setDetectorRunning(true);
       await fetchGameState();
     } catch (e: unknown) {
-      setLiveError(e instanceof Error ? e.message : "Błąd uruchamiania detektora.");
+      setLiveError(e instanceof Error ? e.message : "Failed to start detector.");
     } finally {
       setLiveLoading(false);
     }
@@ -738,7 +738,7 @@ export default function App() {
       setError(null);
       await fetchGameState();
     } catch (e: unknown) {
-      setLiveError(e instanceof Error ? e.message : "Błąd resetowania gry.");
+      setLiveError(e instanceof Error ? e.message : "Failed to reset game.");
     } finally {
       setLiveLoading(false);
     }
@@ -766,7 +766,7 @@ export default function App() {
         if (!res.ok) throw new Error(parseApiErrorPayload(data));
         setResult(data as EvalResponse);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Nieznany błąd");
+        setError(e instanceof Error ? e.message : "Unknown error");
       } finally {
         setLoading(false);
       }
@@ -813,11 +813,11 @@ export default function App() {
   // Etykieta statusu gry do wyświetlenia w tabeli
   const gameStatusLabel = (() => {
     if (!gameState) return "—";
-    if (gameState.is_checkmate) return "Mat!";
-    if (gameState.is_stalemate) return "Pat!";
-    if (gameState.is_game_over) return "Koniec gry";
-    if (gameState.is_check) return "Szach!";
-    return "Trwa gra";
+    if (gameState.is_checkmate) return "Checkmate!";
+    if (gameState.is_stalemate) return "Stalemate!";
+    if (gameState.is_game_over) return "Game over";
+    if (gameState.is_check) return "Check!";
+    return "Game in progress";
   })();
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -874,9 +874,9 @@ export default function App() {
           const targetOccupied = targetPiece != null;
           const hint =
             isPawn && targetSquare[0] === sourceSquare[0] && targetOccupied
-              ? "Pion nie może bić na wprost. Jeśli b8 jest zajęte, zbijasz tylko na skos (a8/c8)."
-              : "Sprawdź czy to właściwa kolej i czy ruch jest legalny.";
-          setError(`Nielegalny ruch ${sourceSquare} -> ${targetSquare}. ${hint}`);
+              ? "A pawn cannot capture straight ahead. If b8 is occupied, capture diagonally (a8/c8)."
+              : "Check whether it is the correct side to move and whether the move is legal.";
+          setError(`Illegal move ${sourceSquare} -> ${targetSquare}. ${hint}`);
           return false;
         }
 
@@ -935,14 +935,7 @@ export default function App() {
     <>
     <main className={`app app--${activeTab}`}>
       <header className="header">
-        <h1>
-          Chess <span className="title-live">Live</span>{" "}
-          <span className="title-analysis">Analysis</span>
-        </h1>
-        <p>
-          Analiza pozycji · <strong>Stockfish 18</strong> · silnik UCI · MVP v0.1
-        </p>
-        <div className="view-tabs" role="tablist" aria-label="Tryb widoku">
+        <div className="view-tabs" role="tablist" aria-label="View mode">
           <button
             type="button"
             role="tab"
@@ -959,7 +952,7 @@ export default function App() {
             className={`view-tab${activeTab === "analysis" ? " view-tab--active" : ""}`}
             onClick={() => setActiveTab("analysis")}
           >
-            Analiza statycznej pozycji
+            Static Position Analysis
           </button>
         </div>
       </header>
@@ -1010,6 +1003,7 @@ export default function App() {
             boardSizePx={currentBoardSize}
           />
         </div>
+
       </div>
 
       {activeTab === "live" && (
@@ -1030,17 +1024,17 @@ export default function App() {
                 <td className="gst-val gst-val--fen">{gameState?.fen ?? STARTING_FEN}</td>
               </tr>
               <tr>
-                <td className="gst-label">Kolej</td>
+                <td className="gst-label">Turn</td>
                 <td className="gst-val">
                   {gameState
                     ? gameState.turn === "white"
-                      ? "♟ Białe"
-                      : "♙ Czarne"
+                      ? "♟ White"
+                      : "♙ Black"
                     : "—"}
                 </td>
               </tr>
               <tr>
-                <td className="gst-label">Ruch #</td>
+                <td className="gst-label">Move #</td>
                 <td className="gst-val">{gameState?.move_number ?? "—"}</td>
               </tr>
               <tr>
@@ -1061,7 +1055,7 @@ export default function App() {
           {/* Historia ostatnich 10 ruchów */}
           {gameState && gameState.history.length > 0 && (
             <div className="move-history-wrap">
-              <span className="control-label">Ostatnie ruchy</span>
+              <span className="control-label">Last moves</span>
               <div className="move-history-list">
                 {gameState.history.slice(-10).map((move, i) => (
                   <span key={i} className="history-move-chip">
@@ -1100,7 +1094,6 @@ export default function App() {
           {occupancyError && <div className="error-msg occupancy-error"> {occupancyError}</div>}
         </div>
 
-        {/* Przyciski kontroli planszy pod Live Camera */}
         <div className="board-controls">
           <button
             type="button"
@@ -1108,23 +1101,23 @@ export default function App() {
             onClick={() => setShowBestMove((v) => !v)}
             aria-pressed={showBestMove}
           >
-            {showBestMove ? "⟵ Ukryj strzałkę" : "⟶ Pokaż najlepszy ruch"}
+            {showBestMove ? "⟵ Hide arrow" : "⟶ Show best move"}
           </button>
           <button
             type="button"
             className="flip-board-btn"
             onClick={() => setBoardOrientation((o) => (o === "white" ? "black" : "white"))}
-            title="Obróć szachownicę o 180°"
+            title="Rotate board by 180°"
           >
-            ⟲ Obróć
+            ⟲ Rotate
           </button>
           <button
             type="button"
             className="fullscreen-btn"
             onClick={() => setIsFullscreen(true)}
-            title="Pełny ekran"
+            title="Fullscreen"
           >
-            ⛶ Pełny ekran
+            ⛶ Fullscreen
           </button>
         </div>
 
@@ -1133,27 +1126,27 @@ export default function App() {
           {result ? (
             <>
               <div className="board-info-card">
-                <div className="bic-label">Kolej</div>
+                <div className="bic-label">Turn</div>
                 <div className="bic-val bic-val--turn">
                   {result.turn === "white" ? (
                     <>
                       <span className="bic-piece bic-piece--plate-light" aria-hidden>
                         ♟
                       </span>
-                      <span>BIAŁE</span>
+                      <span>WHITE</span>
                     </>
                   ) : (
                     <>
                       <span className="bic-piece bic-piece--plate-dark" aria-hidden>
                         ♙
                       </span>
-                      <span>CZARNE</span>
+                      <span>BLACK</span>
                     </>
                   )}
                 </div>
               </div>
               <div className="board-info-card">
-                <div className="bic-label">Najlepszy ruch</div>
+                <div className="bic-label">Best move</div>
                 <div className="bic-val bic-val--move">
                   {result.best_move ? (
                     <span className="move-arrow">
@@ -1168,7 +1161,7 @@ export default function App() {
             </>
           ) : (
             <div className="board-info-placeholder">
-              Wykonaj analizę, aby zobaczyć szczegóły pozycji.
+              Run analysis to see position details.
             </div>
           )}
         </div>
@@ -1181,14 +1174,14 @@ export default function App() {
 
         {/* ===== SEKCJA STOCKFISH ===== */}
         <label className="input-label" htmlFor="fen-input">
-          Pozycja FEN
+          FEN Position
         </label>
         <textarea
           id="fen-input"
           value={analysisFen}
           onChange={handleFenChange}
           onKeyDown={handleKey}
-          placeholder="Wklej notację FEN…"
+          placeholder="Paste FEN notation..."
           spellCheck={false}
         />
 
@@ -1196,7 +1189,7 @@ export default function App() {
           <div className="control-group">
             <div className="control-head">
               <label className="control-label" htmlFor="depth-range">
-                Głębokość analizy (depth)
+                Analysis Depth
               </label>
               <span className="control-value">{depth}</span>
             </div>
@@ -1209,13 +1202,13 @@ export default function App() {
               onChange={(e) => setDepth(Number(e.target.value))}
             />
             <p className="control-hint">
-              Wyższa wartość = dokładniej, ale wolniej (typowo 10–20).
+              Higher value = more accurate, but slower (typically 10–20).
             </p>
           </div>
 
           <div className="control-group">
             <span className="control-label" id="strength-mode-label">
-              Siła silnika
+              Engine Strength
             </span>
             <div
               className="strength-toggle"
@@ -1228,7 +1221,7 @@ export default function App() {
                 onClick={() => setStrengthMode("full")}
                 aria-pressed={strengthMode === "full"}
               >
-                Pełna siła
+                Full Strength
               </button>
               <button
                 type="button"
@@ -1236,7 +1229,7 @@ export default function App() {
                 onClick={() => setStrengthMode("elo")}
                 aria-pressed={strengthMode === "elo"}
               >
-                Limit Elo
+                Elo Limit
               </button>
               <button
                 type="button"
@@ -1248,7 +1241,7 @@ export default function App() {
               </button>
             </div>
             <p className="control-hint">
-              Elo: UCI 1320–3190 · Skill: skala Stockfish, 20 = max.
+              Elo: UCI 1320–3190 · Skill: Stockfish scale, 20 = max.
             </p>
           </div>
 
@@ -1256,7 +1249,7 @@ export default function App() {
             <div className="control-group">
               <div className="control-head">
                 <label className="control-label" htmlFor="elo-range">
-                  Docelowe Elo
+                  Target Elo
                 </label>
                 <span className="control-value">{eloLimit}</span>
               </div>
@@ -1270,7 +1263,7 @@ export default function App() {
                 onChange={(e) => setEloLimit(Number(e.target.value))}
               />
               <p className="control-hint">
-                Symulacja gracza o podanym rankingu (Stockfish UCI).
+                Simulates a player with the selected rating (Stockfish UCI).
               </p>
             </div>
           )}
@@ -1292,10 +1285,37 @@ export default function App() {
                 onChange={(e) => setSkillLevel(Number(e.target.value))}
               />
               <p className="control-hint">
-                0 = bardzo słaby, 20 = pełna siła silnika (~3800).
+                0 = very weak, 20 = full engine strength (~3800).
               </p>
             </div>
           )}
+        </div>
+
+        <div className="board-controls">
+          <button
+            type="button"
+            className={`arrow-toggle${showBestMove ? " arrow-toggle--active" : ""}`}
+            onClick={() => setShowBestMove((v) => !v)}
+            aria-pressed={showBestMove}
+          >
+            {showBestMove ? "⟵ Hide arrow" : "⟶ Show best move"}
+          </button>
+          <button
+            type="button"
+            className="flip-board-btn"
+            onClick={() => setBoardOrientation((o) => (o === "white" ? "black" : "white"))}
+            title="Rotate board by 180°"
+          >
+            ⟲ Rotate
+          </button>
+          <button
+            type="button"
+            className="fullscreen-btn"
+            onClick={() => setIsFullscreen(true)}
+            title="Fullscreen"
+          >
+            ⛶ Fullscreen
+          </button>
         </div>
 
         <div className="btn-row">
@@ -1305,7 +1325,7 @@ export default function App() {
             onClick={() => void evaluate()}
             disabled={loading || !fen.trim()}
           >
-            {loading ? "Analizuję…" : "Analizuj"}
+            {loading ? "Analyzing..." : "Analyze"}
           </button>
           <button
             type="button"
@@ -1319,9 +1339,9 @@ export default function App() {
               setEloLimit(DEFAULT_ELO);
               setSkillLevel(DEFAULT_SKILL);
             }}
-            title="Wyczyść wyniki analizy i przywróć domyślne ustawienia silnika"
+            title="Clear analysis results and restore default engine settings"
           >
-            Wyczyść
+            Clear
           </button>
         </div>
         {error && <div className="error-msg">⚠ {error}</div>}

@@ -16,7 +16,7 @@ load_dotenv(_REPO_ROOT / ".env")
 # Kamera
 # ---------------------------------------------------------------------------
 
-CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.107")
+CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.104")
 CAMERA_PORT: int = int(os.environ.get("CV_CAMERA_PORT", "8080"))
 
 # /shot.jpg — pojedyncza klatka JPEG (szybszy polling niż MJPEG)

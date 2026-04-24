@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 # Globalna sesja HTTP z keep-alive — wielokrotne połączenia do tej samej kamery
 # bez kosztu TCP handshake na każdy request (A2).
 _session = requests.Session()
+# Nie używaj zmiennych proxy środowiska (częsta przyczyna timeoutów lokalnej kamery).
+_session.trust_env = False
 
 # -------------------------------------------------------------------
 # Background stream reader (A1) — ciągły MJPEG do bufora w pamięci
@@ -124,15 +126,26 @@ def fetch_snapshot() -> np.ndarray:
     Używana w endpointach snapshotów (kalibracja, debug).
     Dla pętli live preferuj fetch_snapshot_fast().
     """
-    try:
-        resp = _session.get(
-            CAMERA_SNAPSHOT_URL, timeout=CAMERA_TIMEOUT_S, verify=False
-        )
-        resp.raise_for_status()
-    except requests.RequestException as exc:
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            resp = _session.get(
+                CAMERA_SNAPSHOT_URL, timeout=CAMERA_TIMEOUT_S, verify=False
+            )
+            resp.raise_for_status()
+            break
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(0.2)
+                continue
+            raise RuntimeError(
+                f"Nie można połączyć się z kamerą ({CAMERA_SNAPSHOT_URL}): {exc}"
+            ) from exc
+    else:  # pragma: no cover
         raise RuntimeError(
-            f"Nie można połączyć się z kamerą ({CAMERA_SNAPSHOT_URL}): {exc}"
-        ) from exc
+            f"Nie można połączyć się z kamerą ({CAMERA_SNAPSHOT_URL}): {last_exc}"
+        )
 
     arr = np.frombuffer(resp.content, dtype=np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
