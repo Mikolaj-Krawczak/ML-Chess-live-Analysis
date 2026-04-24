@@ -200,7 +200,7 @@ def _try_capture_occupied_dst(
 
 
 def _square_roi(sq_name: str, image: np.ndarray) -> np.ndarray:
-    """Wycina ROI pola z obrazu 800×800 (100px na komórkę)."""
+    """Wycina ROI pola z obrazu BOARD_SIZE_PX × BOARD_SIZE_PX."""
     from .config import BOARD_SIZE_PX, CELL_MARGIN_PX
 
     cell_px = BOARD_SIZE_PX // 8

@@ -37,7 +37,7 @@ CAMERA_TIMEOUT_S: float = float(os.environ.get("CV_CAMERA_TIMEOUT_S", "1.5"))
 # Kalibracja / warp
 # ---------------------------------------------------------------------------
 
-BOARD_SIZE_PX: int = int(os.environ.get("CV_BOARD_SIZE_PX", "800"))
+BOARD_SIZE_PX: int = int(os.environ.get("CV_BOARD_SIZE_PX", "640"))
 CELL_SIZE_PX: int = BOARD_SIZE_PX // 8
 
 CALIBRATION_PATH: Path = Path(
@@ -64,7 +64,7 @@ CELL_MARGIN_PX: int = int(os.environ.get("CV_CELL_MARGIN_PX", "15"))
 
 # Liczba klatek stabilizacji wymagana przez maszynę stanów
 OCCUPANCY_STABILITY_FRAMES: int = int(
-    os.environ.get("CV_OCCUPANCY_STABILITY_FRAMES", "3")
+    os.environ.get("CV_OCCUPANCY_STABILITY_FRAMES", "2")
 )
 
 # ---------------------------------------------------------------------------

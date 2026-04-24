@@ -190,7 +190,22 @@ def load_calibration() -> bool:
 
     try:
         data = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
-        _homography_matrix = np.array(data["homography_matrix"], dtype=np.float64)
+
+        # Przelicz homografię dla aktualnego BOARD_SIZE_PX — zapisana H mogła być
+        # obliczona dla innego rozmiaru wyjścia (np. przy zmianie 800→640).
+        stored_size = data.get("board_size_px", BOARD_SIZE_PX)
+        src_corners = np.array(data["source_corners"], dtype=np.float32)
+        if stored_size != BOARD_SIZE_PX:
+            logger.info(
+                "Przeliczam homografię: zapisana dla %dpx, aktualna %dpx.",
+                stored_size,
+                BOARD_SIZE_PX,
+            )
+            dst = _destination_corners(BOARD_SIZE_PX)
+            _homography_matrix = cv2.getPerspectiveTransform(src_corners, dst)
+        else:
+            _homography_matrix = np.array(data["homography_matrix"], dtype=np.float64)
+
         _calibration_meta = data
         logger.info(
             "Kalibracja załadowana (%s, %s)",

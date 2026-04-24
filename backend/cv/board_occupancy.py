@@ -74,7 +74,7 @@ def _extract_cell(proc: np.ndarray, row: int, col: int) -> np.ndarray:
 
 def analyze_board(warped: np.ndarray) -> list[CellAnalysis]:
     """
-    Analizuje wyprostowany obraz planszy (800×800px).
+    Analizuje wyprostowany obraz planszy (BOARD_SIZE_PX × BOARD_SIZE_PX).
 
     Próbuje użyć modelu CNN — jeśli niedostępny, używa wariancji.
     Zwraca listę 64 CellAnalysis w kolejności row-major (a8→h1).
