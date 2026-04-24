@@ -83,12 +83,26 @@ class MoveDetector:
         self._candidate = set()
         self._failed_finalize_count = 0
 
+    def _occupied_from_game_state(self) -> set[str]:
+        """Autorytatywny occupancy na podstawie aktualnego boarda (FEN)."""
+        board = game_state.get_board_copy()
+        return {str(sq) for sq in board.piece_map().keys()}
+
     def _resync_before(self, after: set[str], after_image: np.ndarray, reason: str) -> None:
-        """Awaryjny resync baseline gdy detektor wszedł w drift."""
-        self._before = after
+        """
+        Awaryjny resync baseline gdy detektor wszedł w drift.
+
+        Kluczowe: baseline bierzemy z game_state (FEN), nie z bieżącej detekcji CV,
+        żeby nie utrwalać zaszumionych "duchów" pól.
+        """
+        self._before = self._occupied_from_game_state()
         self._before_image = after_image.copy()
         self._failed_finalize_count = 0
-        logger.warning("Resync _before po błędach inferencji: %s", reason)
+        logger.warning(
+            "Resync _before do game_state po błędach inferencji: %s | before=%s",
+            reason,
+            sorted(self._before),
+        )
 
     def process_frame(self, warped: np.ndarray) -> FrameResult:
         """Przetwarza jedną klatkę i aktualizuje maszynę stanów."""
@@ -180,8 +194,10 @@ class MoveDetector:
             self._failed_finalize_count += 1
             if self._failed_finalize_count >= self._max_failed_finalize_before_resync:
                 self._resync_before(after, after_image, reason)
-                reason = f"{reason} | auto-resync baseline"
-            logger.warning("Nie rozpoznano ruchu: %s — _before bez zmian.", reason)
+                reason = f"{reason} | auto-resync baseline->game_state"
+                logger.warning("Nie rozpoznano ruchu: %s", reason)
+            else:
+                logger.warning("Nie rozpoznano ruchu: %s — _before bez zmian.", reason)
             return FrameResult(state="IDLE", move_detected=False,
                                reason=reason, occupied_now=list(after))
 
