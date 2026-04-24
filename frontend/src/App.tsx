@@ -332,8 +332,9 @@ const DEFAULT_DEPTH = 18;
 const DEFAULT_ELO = 1500;
 const DEFAULT_SKILL = 10;
 
-// A6: odstęp między kolejnymi tickami (łańcuchowo — dopiero po zakończeniu poprzedniego)
-const LIVE_POLL_INTERVAL_MS = 500;
+// Odstęp między kolejnymi pollami stanu (łańcuchowo — dopiero po zakończeniu poprzedniego).
+// Może być niski (~150ms) bo GET /game/state jest lekkie — nie uruchamia CNN.
+const LIVE_POLL_INTERVAL_MS = 150;
 
 // A8: niższa głębokość dla auto-analizy po ruchu z kamery
 // Manualne "Analizuj" nadal korzysta z ustawienia użytkownika (do 24)
