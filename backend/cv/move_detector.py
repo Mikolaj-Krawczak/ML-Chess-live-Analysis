@@ -57,12 +57,15 @@ class MoveDetector:
         self._before_image: Optional[np.ndarray] = None  # obraz klatki 'before'
         self._candidate: set[str] = set()
         self._stable_count: int = 0
+        self._failed_finalize_count: int = 0
+        self._max_failed_finalize_before_resync: int = 2
 
     def start(self, warped: Optional[np.ndarray] = None) -> None:
         """Inicjalizuje detektor i opcjonalnie ustawia snapshot 'before'."""
         self._state = DetectorState.IDLE
         self._stable_count = 0
         self._candidate = set()
+        self._failed_finalize_count = 0
         if warped is not None:
             self._before = board_occupancy.get_occupied_squares(warped)
             self._before_image = warped.copy()
@@ -78,6 +81,14 @@ class MoveDetector:
         self._state = DetectorState.IDLE
         self._stable_count = 0
         self._candidate = set()
+        self._failed_finalize_count = 0
+
+    def _resync_before(self, after: set[str], after_image: np.ndarray, reason: str) -> None:
+        """Awaryjny resync baseline gdy detektor wszedł w drift."""
+        self._before = after
+        self._before_image = after_image.copy()
+        self._failed_finalize_count = 0
+        logger.warning("Resync _before po błędach inferencji: %s", reason)
 
     def process_frame(self, warped: np.ndarray) -> FrameResult:
         """Przetwarza jedną klatkę i aktualizuje maszynę stanów."""
@@ -164,8 +175,12 @@ class MoveDetector:
         self._stable_count = 0
 
         if move_uci is None:
-            # Nie aktualizujemy _before — zachowujemy poprzedni dobry stan.
-            # Dzięki temu zakłócenie (cień, szum CNN) nie psuje kolejnych detekcji.
+            # Pojedyncze zakłócenie: trzymaj _before. Powtarzające się błędy:
+            # wykonaj resync, żeby uniknąć dryfu baseline i "duchów" dawnych pól.
+            self._failed_finalize_count += 1
+            if self._failed_finalize_count >= self._max_failed_finalize_before_resync:
+                self._resync_before(after, after_image, reason)
+                reason = f"{reason} | auto-resync baseline"
             logger.warning("Nie rozpoznano ruchu: %s — _before bez zmian.", reason)
             return FrameResult(state="IDLE", move_detected=False,
                                reason=reason, occupied_now=list(after))
@@ -173,7 +188,10 @@ class MoveDetector:
         try:
             game_state.push(move_uci)
         except ValueError as exc:
-            # Ruch UCI wykryty, ale nielegalny — też nie aktualizujemy _before.
+            # Tak jak wyżej: po serii błędów legalności resyncujemy baseline.
+            self._failed_finalize_count += 1
+            if self._failed_finalize_count >= self._max_failed_finalize_before_resync:
+                self._resync_before(after, after_image, str(exc))
             logger.error("Push ruchu %s nie powiódł się: %s", move_uci, exc)
             return FrameResult(state="IDLE", move_detected=False,
                                reason=str(exc), occupied_now=list(after))
@@ -181,6 +199,7 @@ class MoveDetector:
         # Tylko przy zatwierdzonym, legalnym ruchu aktualizujemy bazę porównawczą.
         self._before = after
         self._before_image = after_image.copy()
+        self._failed_finalize_count = 0
 
         fen = game_state.get_fen()
         logger.info("Ruch zatwierdzony: %s | FEN: %s", move_uci, fen)
