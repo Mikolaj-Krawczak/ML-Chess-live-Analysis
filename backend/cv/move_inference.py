@@ -190,6 +190,12 @@ def _try_capture_occupied_dst(
                 best_move.uci(),
             )
             return best_move.uci()
+        else:
+            logger.warning(
+                "Pixel-diff nie wybrał kandydata z %d bić: %s",
+                len(legal_captures),
+                [m.uci() for m in legal_captures],
+            )
 
     # Fallback gdy brak obrazów — zwróć pierwsze legalne bicie (stare zachowanie)
     m = legal_captures[0]
@@ -229,6 +235,13 @@ def _disambiguate_by_pixel_diff(
     """
     best_move: chess.Move | None = None
     best_diff: float = -1.0
+    min_threshold = 5.0  # minimalna różnica pikselowa (0-255 skala)
+
+    logger.debug(
+        "Pixel-diff disambiguacja %d kandydatów na obrazie %s",
+        len(candidates),
+        before_image.shape,
+    )
 
     for move in candidates:
         dst_name = chess.square_name(move.to_square)
@@ -247,4 +260,10 @@ def _disambiguate_by_pixel_diff(
             best_diff = diff
             best_move = move
 
-    return best_move
+    # Zwróć tylko gdy różnica jest wystarczająco duża
+    if best_diff >= min_threshold:
+        logger.debug("Wybrano %s z diff=%.2f", best_move.uci() if best_move else None, best_diff)
+        return best_move
+    else:
+        logger.debug("Wszystkie diff <%.1f, brak wyraźnego zwycięzcy", min_threshold)
+        return None
