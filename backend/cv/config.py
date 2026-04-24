@@ -16,7 +16,7 @@ load_dotenv(_REPO_ROOT / ".env")
 # Kamera
 # ---------------------------------------------------------------------------
 
-CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.107")
+CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.104")
 CAMERA_PORT: int = int(os.environ.get("CV_CAMERA_PORT", "8080"))
 
 # /shot.jpg — pojedyncza klatka JPEG (szybszy polling niż MJPEG)
@@ -87,6 +87,7 @@ SQUARE_CLASSIFIER_WEIGHTS: Path = Path(
 #   torch — wymuś PyTorch (.pth), bez ONNX
 SQUARE_CLASSIFIER_BACKEND: str = os.environ.get(
     "CV_SQUARE_CLASSIFIER_BACKEND",
+    
     "auto",
 ).strip().lower()
 
