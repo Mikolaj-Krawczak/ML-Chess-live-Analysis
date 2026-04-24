@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional
 
+import chess
 import numpy as np
 
 from . import board_occupancy, game_state, move_inference
@@ -86,7 +87,7 @@ class MoveDetector:
     def _occupied_from_game_state(self) -> set[str]:
         """Autorytatywny occupancy na podstawie aktualnego boarda (FEN)."""
         board = game_state.get_board_copy()
-        return {str(sq) for sq in board.piece_map().keys()}
+        return {chess.square_name(sq) for sq in board.piece_map().keys()}
 
     def _resync_before(self, after: set[str], after_image: np.ndarray, reason: str) -> None:
         """
