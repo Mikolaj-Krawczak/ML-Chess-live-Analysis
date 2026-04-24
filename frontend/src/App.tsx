@@ -634,15 +634,10 @@ export default function App() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Jedna iteracja pollingowa: tick detektora → odczyt stanu gry
+  // Jedna iteracja pollingowa: odczyt stanu gry.
+  // DetectorWorker na backendzie sam przetwarza klatki z kamery w tle —
+  // frontend potrzebuje tylko lekkiego GET /game/state (zero CNN).
   const tickAndSync = useCallback(async () => {
-    try {
-      // Tick przetwarza klatkę z kamery i wykrywa ruch (jeśli nastąpił)
-      await fetch(`${API}/cv/game/detector/tick`, { method: "POST" });
-    } catch {
-      // Błąd ticki nie blokuje odczytu stanu — logujemy cicho
-    }
-    // Zawsze odśwież stan po ticku (nowy FEN, historia, kolej)
     await fetchGameState();
   }, [fetchGameState]);
 

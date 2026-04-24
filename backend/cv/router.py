@@ -35,7 +35,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, Response
 
-from . import board_occupancy, calibration, camera, game_state, move_detector
+from . import board_occupancy, calibration, camera, detector_worker, game_state, move_detector
 from .config import BOARD_SIZE_PX, CAMERA_SNAPSHOT_URL, OCCUPANCY_VARIANCE_THRESHOLD
 from .models import (
     CalibrationStatus,
@@ -60,8 +60,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
-# Singleton detektora ruchów
+# Singleton detektora ruchów i wątku tła
 _detector = move_detector.MoveDetector()
+_worker = detector_worker.DetectorWorker()
 _move_collect_history: list[dict] = []
 
 
@@ -90,6 +91,10 @@ def on_startup() -> None:
 
 def on_shutdown() -> None:
     """Graceful shutdown — zatrzymuje wątki backgroundowe."""
+    try:
+        _worker.stop()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Błąd przy zatrzymywaniu DetectorWorker: %s", exc)
     try:
         camera.stop_stream_thread()
     except Exception as exc:  # pragma: no cover
@@ -713,12 +718,13 @@ def get_game_state():
 def reset_game(req: GameResetRequest):
     """Resetuje grę do podanego FEN. Po resecie wywołaj /game/detector/start."""
     global _move_collect_history
+    _worker.stop()
     try:
         game_state.reset(req.fen)
     except ValueError as exc:
         raise HTTPException(422, detail=f"Nieprawidłowy FEN: {exc}")
     _move_collect_history = []
-    return {"ok": True, "fen": req.fen, "message": "Gra zresetowana."}
+    return {"ok": True, "fen": req.fen, "message": "Gra zresetowana. Wywołaj /game/detector/start żeby wznowić detekcję."}
 
 
 # ---------------------------------------------------------------------------
@@ -857,8 +863,11 @@ def undo_move_collect():
 @router.post("/game/detector/start")
 def detector_start():
     """
-    Inicjalizuje detektor — pobiera snapshot 'before' z aktualnej klatki.
-    Wywołuj po kalibracji i po każdym resecie gry.
+    Inicjalizuje detektor i uruchamia wątek tła (DetectorWorker).
+
+    Wywołuj po kalibracji i po każdym resecie gry. Wątek tła przetwarza
+    klatki z kamery z częstotliwością ~4fps — frontend nie musi już triggerować
+    ciężkich tick-ów z inferencją CNN.
     """
     try:
         frame = camera.fetch_snapshot_fast()
@@ -870,11 +879,17 @@ def detector_start():
         raise HTTPException(409, detail=str(exc))
 
     _detector.start(warped)
+    _worker.start(_detector, target_fps=4.0)
+
     return {
         "ok": True,
-        "message": f"Detektor uruchomiony. Snapshot before: {len(_detector.before_snapshot)} pol.",
+        "message": (
+            f"Detektor uruchomiony (background worker aktywny). "
+            f"Snapshot before: {len(_detector.before_snapshot)} pol."
+        ),
         "before_occupied": sorted(_detector.before_snapshot),
         "detector_state": _detector.state_name,
+        "worker_running": _worker.is_running,
     }
 
 
@@ -886,11 +901,25 @@ def detector_start():
 @router.post("/game/detector/tick", response_model=MoveResultResponse)
 def detector_tick():
     """
-    Jedna iteracja detekcji ruchu.
+    Zwraca aktualny stan detektora.
 
-    Wywołuj cyklicznie (np. co 500ms). Gdy move_detected=True → ruch zatwierdzony,
-    FEN zaktualizowany, gotowy do /evaluate-current.
+    Gdy DetectorWorker jest aktywny (normalny tryb): odpowiada natychmiast (<1ms)
+    z cached wynikiem ostatniej klatki — bez inferencji CNN w tym wątku.
+
+    Gdy worker nieaktywny (tryb fallback/legacy): przetwarza jedną klatkę na żądanie
+    (stare zachowanie — wolniejsze, ale zachowuje kompatybilność wsteczną).
     """
+    if _worker.is_running:
+        status = _worker.get_status()
+        return MoveResultResponse(
+            ok=True,
+            move_uci=None,
+            fen_after=None,
+            reason=status.last_reason,
+            detector_state=status.last_detector_state,
+        )
+
+    # Fallback: worker nie uruchomiony — stary flow (np. detector/start nie wywołany)
     try:
         frame = camera.fetch_snapshot_fast()
     except RuntimeError as exc:
@@ -908,6 +937,41 @@ def detector_tick():
         reason=result.reason,
         detector_state=result.state,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /cv/game/detector/stop
+# ---------------------------------------------------------------------------
+
+
+@router.post("/game/detector/stop")
+def detector_stop():
+    """Zatrzymuje wątek tła DetectorWorker. Gra pozostaje niezmieniona."""
+    _worker.stop()
+    return {
+        "ok": True,
+        "message": "DetectorWorker zatrzymany.",
+        "detector_state": _detector.state_name,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /cv/game/detector/status
+# ---------------------------------------------------------------------------
+
+
+@router.get("/game/detector/status")
+def detector_status():
+    """Zwraca diagnostykę wątku tła: fps, liczba klatek, błędy."""
+    status = _worker.get_status()
+    return {
+        "worker_running": _worker.is_running,
+        "detector_state": _detector.state_name,
+        "frames_processed": status.frames_processed,
+        "errors": status.errors,
+        "avg_frame_ms": status.avg_frame_ms,
+        "last_move_uci": status.last_move_uci,
+    }
 
 
 # ---------------------------------------------------------------------------
