@@ -12,6 +12,11 @@ Architektura SquareCNN (zdefiniowana tutaj i w train_classifier.py):
   FC(8192→256) + ReLU + Dropout(0.5)
   FC(256→1) + Sigmoid
 
+Optymalizacja inferencji (priorytet):
+  1. ONNX Runtime  — ładuje .onnx obok .pth; 2-3× szybszy od PyTorch na CPU
+  2. PyTorch CPU   — fallback gdy brak onnxruntime lub eksport się nie powiódł
+  3. Wariancja     — ostatni fallback (board_occupancy.py), brak CNN
+
 Model ładowany jest przy starcie serwera (on_startup w router.py).
 Jeśli wagi nie istnieją — board_occupancy.py automatycznie fallback do wariancji.
 
@@ -22,14 +27,16 @@ graceful degradation na wariancję jest priorytetem stabilności API.
 import logging
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Singleton modelu i sesji PyTorch
+# Singleton modelu PyTorch i sesji ONNX Runtime
 _model = None
 _device = None
 _loaded = False
+_onnx_session = None   # InferenceSession jeśli onnxruntime dostępny
 
 # Rozmiar wejściowego patcha (musi być taki sam jak w collector.py i train_classifier.py)
 PATCH_SIZE = 70
@@ -106,11 +113,55 @@ def _build_model():
 # ---------------------------------------------------------------------------
 
 
+def _export_onnx(model, onnx_path: Path) -> bool:
+    """Eksportuje załadowany model PyTorch do formatu ONNX (CPU, batch=64)."""
+    try:
+        import torch
+        dummy = torch.zeros(64, 1, PATCH_SIZE, PATCH_SIZE)
+        # dynamo=False: legacy TorchScript exporter (nie wymaga onnxscript)
+        torch.onnx.export(
+            model,
+            dummy,
+            str(onnx_path),
+            input_names=["input"],
+            output_names=["output"],
+            opset_version=12,
+            do_constant_folding=True,
+            dynamo=False,
+        )
+        logger.info("ONNX model wyeksportowany: %s", onnx_path)
+        return True
+    except Exception as exc:
+        logger.warning("Eksport ONNX nieudany: %s", exc)
+        return False
+
+
+def _load_onnx_session(onnx_path: Path) -> bool:
+    """Ładuje sesję ONNX Runtime. Zwraca True gdy sukces."""
+    global _onnx_session
+    try:
+        import onnxruntime as ort
+        sess_options = ort.SessionOptions()
+        sess_options.intra_op_num_threads = 2
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        _onnx_session = ort.InferenceSession(
+            str(onnx_path),
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
+        logger.info("ONNX Runtime sesja załadowana: %s", onnx_path)
+        return True
+    except Exception as exc:
+        logger.warning("ONNX Runtime niedostępny: %s", exc)
+        return False
+
+
 def load_model() -> bool:
     """
-    Ładuje wagi CNN z pliku .pth.
+    Ładuje wagi CNN z pliku .pth. Próbuje też załadować/stworzyć sesję ONNX Runtime.
 
-    Zwraca True gdy sukces, False gdy brak wag lub PyTorch niedostępny.
+    Priorytet: ONNX Runtime → PyTorch CPU/CUDA → brak modelu (fallback wariancja).
+    Zwraca True gdy sukces (dowolna metoda), False gdy brak wag lub PyTorch niedostępny.
     """
     global _model, _device, _loaded
 
@@ -140,6 +191,15 @@ def load_model() -> bool:
             "Square classifier załadowany: %s (device: %s)",
             weights_path, _device,
         )
+
+        # Próba załadowania / stworzenia sesji ONNX Runtime dla szybszej inferencji
+        onnx_path = weights_path.with_suffix(".onnx")
+        if not onnx_path.exists():
+            logger.info("Eksportuję model do ONNX: %s", onnx_path)
+            _export_onnx(model.cpu(), onnx_path)
+        if onnx_path.exists():
+            _load_onnx_session(onnx_path)
+
         return True
 
     except Exception as exc:
@@ -157,6 +217,20 @@ def is_loaded() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _preprocess_patches(patches: list[np.ndarray]) -> np.ndarray:
+    """
+    Przekształca listę patchy do batcha float32 (N, 1, PATCH_SIZE, PATCH_SIZE).
+
+    Każdy patch: grayscale uint8 → resize 70×70 → normalize [0,1].
+    """
+    resized = [
+        cv2.resize(p, (PATCH_SIZE, PATCH_SIZE)).astype(np.float32)
+        for p in patches
+    ]
+    batch = np.stack(resized)[:, np.newaxis, :, :]  # (N, 1, H, W)
+    return batch / 255.0
+
+
 def classify_cells(patches: list[np.ndarray]) -> list[float]:
     """
     Klasyfikuje listę 64 patchy grayscale.
@@ -168,28 +242,29 @@ def classify_cells(patches: list[np.ndarray]) -> list[float]:
         Lista 64 wartości float p(occupied) ∈ [0,1].
         Wartość > 0.5 → pole zajęte.
 
+    Ścieżka inferencji (priorytet):
+        1. ONNX Runtime — ~2-3× szybszy od PyTorch na CPU
+        2. PyTorch CPU/CUDA — fallback gdy brak sesji ONNX
+
     Rzuca RuntimeError gdy model nie jest załadowany.
     """
-    if not _loaded or _model is None:
+    if not _loaded:
         raise RuntimeError(
             "Square classifier nie jest załadowany. "
             "Wytrenuj model (train_classifier.py) i uruchom serwer ponownie."
         )
 
+    batch = _preprocess_patches(patches)  # (64, 1, 70, 70) float32
+
+    # Ścieżka 1: ONNX Runtime
+    if _onnx_session is not None:
+        input_name = _onnx_session.get_inputs()[0].name
+        preds = _onnx_session.run(None, {input_name: batch})[0]  # (64, 1)
+        return preds.flatten().tolist()
+
+    # Ścieżka 2: PyTorch fallback
     import torch
-
-    # Preprocessing: resize → normalize do [0,1] → tensor (N,1,H,W)
-    tensors = []
-    for patch in patches:
-        import cv2
-        p = cv2.resize(patch, (PATCH_SIZE, PATCH_SIZE)).astype(np.float32) / 255.0
-        tensors.append(p)
-
-    # (64, PATCH_SIZE, PATCH_SIZE) → (64, 1, PATCH_SIZE, PATCH_SIZE)
-    batch = np.stack(tensors)[:, np.newaxis, :, :]
     tensor = torch.from_numpy(batch).to(_device)
-
     with torch.no_grad():
-        preds = _model(tensor)          # (64, 1)
-
-    return preds.squeeze(1).cpu().numpy().tolist()  # lista 64 floatów
+        preds = _model(tensor)  # (64, 1)
+    return preds.squeeze(1).cpu().numpy().tolist()

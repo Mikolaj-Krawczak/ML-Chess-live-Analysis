@@ -16,3 +16,5 @@ torch>=2.0.0
 torchvision>=0.15.0
 ultralytics>=8.0.0        # YOLOv8 do detekcji szachownicy
 albumentations>=1.3.0     # augmentacja danych treningowych
+onnxruntime>=1.17.0       # szybsza inferencja CNN na CPU
+onnx>=1.14.0              # potrzebne do eksportu modelu PyTorch → ONNX
