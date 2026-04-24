@@ -37,6 +37,7 @@ _model = None
 _device = None
 _loaded = False
 _onnx_session = None   # InferenceSession jeśli onnxruntime dostępny
+_backend_mode = "torch"  # "onnx" albo "torch" (aktywnie używana ścieżka)
 
 # Rozmiar wejściowego patcha (musi być taki sam jak w collector.py i train_classifier.py)
 PATCH_SIZE = 70
@@ -163,10 +164,17 @@ def load_model() -> bool:
     Priorytet: ONNX Runtime → PyTorch CPU/CUDA → brak modelu (fallback wariancja).
     Zwraca True gdy sukces (dowolna metoda), False gdy brak wag lub PyTorch niedostępny.
     """
-    global _model, _device, _loaded
+    global _model, _device, _loaded, _onnx_session, _backend_mode
 
-    from ..config import SQUARE_CLASSIFIER_WEIGHTS
+    from ..config import SQUARE_CLASSIFIER_BACKEND, SQUARE_CLASSIFIER_WEIGHTS
     weights_path = SQUARE_CLASSIFIER_WEIGHTS
+    backend_pref = SQUARE_CLASSIFIER_BACKEND
+    if backend_pref not in {"auto", "onnx", "torch"}:
+        logger.warning(
+            "Nieznana wartość CV_SQUARE_CLASSIFIER_BACKEND=%s, używam 'auto'.",
+            backend_pref,
+        )
+        backend_pref = "auto"
 
     if not weights_path.exists():
         logger.info(
@@ -187,18 +195,29 @@ def load_model() -> bool:
 
         _model = model
         _loaded = True
+        _backend_mode = "torch"
+        _onnx_session = None
         logger.info(
             "Square classifier załadowany: %s (device: %s)",
             weights_path, _device,
         )
 
-        # Próba załadowania / stworzenia sesji ONNX Runtime dla szybszej inferencji
-        onnx_path = weights_path.with_suffix(".onnx")
-        if not onnx_path.exists():
-            logger.info("Eksportuję model do ONNX: %s", onnx_path)
-            _export_onnx(model.cpu(), onnx_path)
-        if onnx_path.exists():
-            _load_onnx_session(onnx_path)
+        # ONNX jest opcjonalny i zależny od preferencji backendu.
+        if backend_pref in {"auto", "onnx"}:
+            onnx_path = weights_path.with_suffix(".onnx")
+            if not onnx_path.exists():
+                logger.info("Eksportuję model do ONNX: %s", onnx_path)
+                _export_onnx(model.cpu(), onnx_path)
+            if onnx_path.exists() and _load_onnx_session(onnx_path):
+                _backend_mode = "onnx"
+        if backend_pref == "torch":
+            logger.info("CV_SQUARE_CLASSIFIER_BACKEND=torch — ONNX wyłączony.")
+        elif backend_pref == "onnx" and _onnx_session is None:
+            logger.warning(
+                "CV_SQUARE_CLASSIFIER_BACKEND=onnx, ale ONNX niedostępny. "
+                "Fallback do PyTorch."
+            )
+        logger.info("Square classifier backend aktywny: %s", _backend_mode)
 
         return True
 
@@ -210,6 +229,11 @@ def load_model() -> bool:
 
 def is_loaded() -> bool:
     return _loaded
+
+
+def get_backend_mode() -> str:
+    """Zwraca aktywnie używany backend inferencji: 'onnx' albo 'torch'."""
+    return _backend_mode
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +281,7 @@ def classify_cells(patches: list[np.ndarray]) -> list[float]:
     batch = _preprocess_patches(patches)  # (64, 1, 70, 70) float32
 
     # Ścieżka 1: ONNX Runtime
-    if _onnx_session is not None:
+    if _backend_mode == "onnx" and _onnx_session is not None:
         input_name = _onnx_session.get_inputs()[0].name
         preds = _onnx_session.run(None, {input_name: batch})[0]  # (64, 1)
         return preds.flatten().tolist()

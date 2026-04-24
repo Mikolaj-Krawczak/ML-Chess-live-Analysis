@@ -131,9 +131,13 @@ def cv_health():
 
     sq_loaded = False
     bd_loaded = False
+    sq_backend = "n/a"
     try:
         from .ml.square_classifier import is_loaded as sq_is_loaded
+        from .ml.square_classifier import get_backend_mode as sq_backend_mode
         sq_loaded = sq_is_loaded()
+        if sq_loaded:
+            sq_backend = sq_backend_mode()
     except ImportError:
         pass
     try:
@@ -151,6 +155,8 @@ def cv_health():
         parts.append("sq_classifier: fallback wariancja")
     if not bd_loaded:
         parts.append("board_detector: fallback manual")
+    if sq_loaded:
+        parts.append(f"sq_backend={sq_backend}")
 
     message = "OK" if not parts else " | ".join(parts)
 

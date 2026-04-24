@@ -16,7 +16,7 @@ load_dotenv(_REPO_ROOT / ".env")
 # Kamera
 # ---------------------------------------------------------------------------
 
-CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.104")
+CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.107")
 CAMERA_PORT: int = int(os.environ.get("CV_CAMERA_PORT", "8080"))
 
 # /shot.jpg — pojedyncza klatka JPEG (szybszy polling niż MJPEG)
@@ -80,6 +80,15 @@ SQUARE_CLASSIFIER_WEIGHTS: Path = Path(
         str(_ML_DIR / "weights" / "square_classifier.pth"),
     )
 )
+
+# Backend inferencji square classifier:
+#   auto  — preferuj ONNX, fallback do PyTorch
+#   onnx  — wymuś ONNX (gdy niedostępny, fallback do PyTorch)
+#   torch — wymuś PyTorch (.pth), bez ONNX
+SQUARE_CLASSIFIER_BACKEND: str = os.environ.get(
+    "CV_SQUARE_CLASSIFIER_BACKEND",
+    "auto",
+).strip().lower()
 
 # Wagi modelu YOLOv8n do detekcji szachownicy
 BOARD_DETECTOR_WEIGHTS: Path = Path(
