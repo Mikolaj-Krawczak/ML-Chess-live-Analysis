@@ -92,6 +92,8 @@ class MoveDetector:
             return self._handle_idle(current)
         if self._state == DetectorState.IN_MOVE:
             return self._handle_in_move(current, warped)
+        if self._state == DetectorState.STABLE_AFTER:
+            return self._handle_stable_after(current, warped)
 
         return FrameResult(state=self._state.name, occupied_now=list(current))
 
@@ -124,6 +126,29 @@ class MoveDetector:
                 occupied_now=list(current),
             )
 
+        # Dodatkowe potwierdzenie stabilnego stanu na kolejnej klatce:
+        # chroni przed false-positive gdy chwilowo wykryje się pole pośrednie.
+        self._state = DetectorState.STABLE_AFTER
+        return FrameResult(
+            state="STABLE_AFTER",
+            reason="Kandydat stabilny — oczekiwanie na potwierdzenie kolejnej klatki.",
+            occupied_now=list(current),
+        )
+
+    def _handle_stable_after(self, current: set[str], warped: np.ndarray) -> FrameResult:
+        """
+        Dodatkowa bramka antyszumowa: finalizuj ruch tylko gdy kolejna klatka
+        potwierdza dokładnie ten sam układ pól zajętych.
+        """
+        if current != self._candidate:
+            self._state = DetectorState.IN_MOVE
+            self._candidate = current
+            self._stable_count = 1
+            return FrameResult(
+                state="IN_MOVE",
+                reason="Potwierdzenie nieudane — wracam do stabilizacji.",
+                occupied_now=list(current),
+            )
         return self._finalize_move(current, warped)
 
     def _finalize_move(self, after: set[str], after_image: np.ndarray) -> FrameResult:
