@@ -168,12 +168,15 @@ def _try_capture_occupied_dst(
             legal_captures.append(move)
 
     if not legal_captures:
+        logger.debug("Brak legalnych bić z %s na pola: %s", src, sorted(candidates))
         return None
+
+    logger.info("Znaleziono %d legalnych bić z %s: %s", len(legal_captures), src, [m.uci() for m in legal_captures])
 
     # Jednoznaczny wynik — nie potrzeba pixel-diff
     if len(legal_captures) == 1:
         m = legal_captures[0]
-        logger.debug("Bicie (jednoznaczne): %s", m.uci())
+        logger.info("Bicie (jednoznaczne): %s", m.uci())
         return m.uci()
 
     # Niejednoznaczność — kilka legalnych bić na "ciągle zajęte" pola.
@@ -184,7 +187,7 @@ def _try_capture_occupied_dst(
             legal_captures, before_image, after_image
         )
         if best_move is not None:
-            logger.debug(
+            logger.info(
                 "Bicie (pixel-diff disambiguacja spośród %d kandydatów): %s",
                 len(legal_captures),
                 best_move.uci(),
@@ -192,7 +195,7 @@ def _try_capture_occupied_dst(
             return best_move.uci()
         else:
             logger.warning(
-                "Pixel-diff nie wybrał kandydata z %d bić: %s",
+                "Pixel-diff nie wybrał kandydata z %d bić: %s. Fallback do pierwszego.",
                 len(legal_captures),
                 [m.uci() for m in legal_captures],
             )
@@ -235,11 +238,12 @@ def _disambiguate_by_pixel_diff(
     """
     best_move: chess.Move | None = None
     best_diff: float = -1.0
-    min_threshold = 5.0  # minimalna różnica pikselowa (0-255 skala)
+    min_threshold = 3.0  # minimalna różnica pikselowa (0-255 skala) - obniżono z 5.0
 
-    logger.debug(
-        "Pixel-diff disambiguacja %d kandydatów na obrazie %s",
+    logger.info(
+        "Pixel-diff disambiguacja %d kandydatów: %s na obrazie %s",
         len(candidates),
+        [m.uci() for m in candidates],
         before_image.shape,
     )
 
@@ -255,15 +259,15 @@ def _disambiguate_by_pixel_diff(
             logger.debug("Pixel-diff błąd dla %s: %s", dst_name, exc)
             continue
 
-        logger.debug("Pixel-diff %s: %.2f", dst_name, diff)
+        logger.info("Pixel-diff %s: %.2f", dst_name, diff)
         if diff > best_diff:
             best_diff = diff
             best_move = move
 
     # Zwróć tylko gdy różnica jest wystarczająco duża
     if best_diff >= min_threshold:
-        logger.debug("Wybrano %s z diff=%.2f", best_move.uci() if best_move else None, best_diff)
+        logger.info("Wybrano %s z diff=%.2f (próg: %.1f)", best_move.uci() if best_move else None, best_diff, min_threshold)
         return best_move
     else:
-        logger.debug("Wszystkie diff <%.1f, brak wyraźnego zwycięzcy", min_threshold)
+        logger.warning("Wszystkie diff <%.1f, brak wyraźnego zwycięzcy. Najwyższy: %.2f", min_threshold, best_diff)
         return None
