@@ -468,6 +468,7 @@ body {
   flex-direction: column;
   gap: 0.65rem;
   width: 100%;
+  margin-top: 0.9rem;
 }
 
 .board-info-card {
@@ -1312,23 +1313,18 @@ button.reset-btn:focus-visible {
 }
 
 .live-badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0.2rem 0.65rem;
-  border-radius: 999px;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 50%;
   border: 1px solid var(--border);
-  color: var(--muted);
-  background: var(--surface-muted);
-  transition: color 0.25s, background 0.25s, border-color 0.25s, box-shadow 0.25s;
+  background: rgba(156, 163, 175, 0.35);
+  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.25s;
 }
 
 .live-badge--active {
-  color: var(--accent);
-  background: rgba(79, 168, 120, 0.12);
+  background: rgba(79, 168, 120, 0.9);
   border-color: rgba(79, 168, 120, 0.45);
-  box-shadow: 0 0 10px rgba(79, 168, 120, 0.2);
+  box-shadow: 0 0 10px rgba(79, 168, 120, 0.45);
   animation: live-pulse 2s ease-in-out infinite;
 }
 
@@ -1477,4 +1473,152 @@ button.reset-btn:focus-visible {
   height: 1px;
   background: var(--border);
   margin-block: 0.25rem;
+}
+
+/* ==================== EDYCJA RUCHÓW ==================== */
+
+/* Historia ruchów z opcją edycji */
+.history-move-chip--editable {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-move-chip--editable:hover {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+  transform: scale(1.05);
+}
+
+.edit-move-icon {
+  opacity: 0;
+  margin-left: 4px;
+  font-size: 0.75em;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.history-move-chip--editable:hover .edit-move-icon {
+  opacity: 0.8;
+}
+
+/* Panel edycji ruchu */
+.edit-move-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.edit-move-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.edit-move-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.edit-move-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: var(--card-bg);
+}
+
+.edit-move-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  min-width: 32px;
+}
+
+.edit-move-btn--confirm {
+  background: linear-gradient(150deg, var(--moss) 0%, #1c3a2e 100%);
+  color: var(--white-clr);
+  border-color: rgba(79, 168, 120, 0.4);
+}
+
+.edit-move-btn--confirm:hover:not(:disabled) {
+  background: linear-gradient(150deg, #3a7a62 0%, var(--moss) 100%);
+  transform: scale(1.05);
+}
+
+.edit-move-btn--cancel {
+  background: linear-gradient(150deg, #5a2a2a 0%, #3a1818 100%);
+  color: #f0a0a0;
+  border-color: rgba(220, 100, 100, 0.4);
+}
+
+.edit-move-btn--cancel:hover:not(:disabled) {
+  background: linear-gradient(150deg, #7a3232 0%, #5a2020 100%);
+  transform: scale(1.05);
+}
+
+.edit-move-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-move-error {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+/* Panel walidacji pozycji */
+.validation-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--gold-dim);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+}
+
+.validation-instruction {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.validation-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: linear-gradient(150deg, var(--gold) 0%, #b8860b 100%);
+  color: var(--bg);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.validation-btn:hover:not(:disabled) {
+  background: linear-gradient(150deg, var(--gold-bright) 0%, var(--gold) 100%);
+  transform: translateY(-1px);
+}
+
+.validation-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.validation-error {
+  margin-top: 8px;
+  font-size: 12px;
 }

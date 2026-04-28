@@ -45,6 +45,8 @@ from .models import (
     CollectResponse,
     CVHealthResponse,
     DatasetStatsResponse,
+    EditMoveRequest,
+    EditMoveResponse,
     GameResetRequest,
     GameStateResponse,
     ManualMoveRequest,
@@ -54,6 +56,7 @@ from .models import (
     OccupancyResponse,
     SnapshotResponse,
     UndoMoveCollectResponse,
+    ValidatePositionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -996,6 +999,109 @@ def evaluate_current():
         return {"fen": current_fen, "source": "game_state", "evaluation": result}
     except Exception as exc:
         raise HTTPException(500, detail=f"Blad Stockfisha: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# POST /cv/game/move/edit
+# ---------------------------------------------------------------------------
+
+
+@router.post("/game/move/edit", response_model=EditMoveResponse)
+def edit_last_move(req: EditMoveRequest):
+    """
+    Edytuje ostatni ruch - cofa go i wykonuje nowy ruch.
+    Gracz musi następnie ustawić figury zgodnie z nową pozycją i wywołać walidację.
+    """
+    try:
+        old_move, new_fen = game_state.edit_last_move(req.new_move_uci)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc))
+    
+    return EditMoveResponse(
+        ok=True,
+        old_move_uci=old_move,
+        new_move_uci=req.new_move_uci,
+        fen_after_edit=new_fen,
+        message=f"Ruch edytowany: {old_move} → {req.new_move_uci}. Ustaw figury zgodnie z nową pozycją.",
+        requires_validation=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /cv/game/validate-position
+# ---------------------------------------------------------------------------
+
+
+@router.post("/game/validate-position", response_model=ValidatePositionResponse)
+def validate_position():
+    """
+    Sprawdza czy pozycja na szachownicy (kamera) odpowiada aktualnemu FEN w game_state.
+    Używane po edycji ruchu - gracz ustawia figury i sprawdza czy są właściwie.
+    """
+    try:
+        frame = camera.fetch_snapshot()
+    except RuntimeError as exc:
+        raise HTTPException(503, detail=str(exc))
+    try:
+        warped = calibration.apply_warp(frame)
+    except RuntimeError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+    # Pobierz aktualny FEN i oczekiwaną pozycję
+    current_fen = game_state.get_fen()
+    
+    # Analizuj obecną zajętość pól
+    analysis = board_occupancy.analyze_board(warped)
+    actual_occupied = [c.square_name for c in analysis if c.occupied]
+    
+    # Wyciągnij oczekiwaną zajętość z FEN
+    expected_occupied = _extract_occupied_squares_from_fen(current_fen)
+    
+    # Porównaj
+    missing_pieces = [sq for sq in expected_occupied if sq not in actual_occupied]
+    extra_pieces = [sq for sq in actual_occupied if sq not in expected_occupied]
+    
+    position_matches = len(missing_pieces) == 0 and len(extra_pieces) == 0
+    
+    if position_matches:
+        message = "Pozycja na szachownicy odpowiada oczekiwanej. Gra może być kontynuowana."
+    else:
+        message = f"Pozycja nie odpowiada oczekiwanej. Brakujące figury: {missing_pieces}, Nadmiarowe: {extra_pieces}"
+    
+    return ValidatePositionResponse(
+        ok=True,
+        position_matches=position_matches,
+        expected_occupied=expected_occupied,
+        actual_occupied=actual_occupied,
+        missing_pieces=missing_pieces,
+        extra_pieces=extra_pieces,
+        message=message
+    )
+
+
+def _extract_occupied_squares_from_fen(fen: str) -> list[str]:
+    """
+    Wyciąga listę zajętych pól z FEN string.
+    """
+    board_part = fen.split(' ')[0]  # Tylko część szachownicy
+    occupied_squares = []
+    
+    rank = 8  # Zaczynamy od 8 linii (a8-h8)
+    file = 0  # Kolumny a=0, b=1, ..., h=7
+    
+    for char in board_part:
+        if char == '/':
+            rank -= 1
+            file = 0
+        elif char.isdigit():
+            file += int(char)  # Przesuń o liczbę pustych pól
+        else:
+            # To jest figura
+            square_name = chr(ord('a') + file) + str(rank)
+            occupied_squares.append(square_name)
+            file += 1
+    
+    return occupied_squares
 
 
 # ---------------------------------------------------------------------------

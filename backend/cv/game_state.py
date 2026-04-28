@@ -195,6 +195,53 @@ def undo_last_move() -> str:
         return undone
 
 
+def edit_last_move(new_move_uci: str) -> tuple[str, str]:
+    """
+    Edytuje ostatni ruch - cofa go i wykonuje nowy.
+    Zwraca (stary_ruch, nowy_fen_po_edycji).
+    """
+    global _history
+    with _lock:
+        if not _board.move_stack:
+            raise ValueError("Brak ruchów do edycji.")
+
+        # Cofnij ostatni ruch
+        old_move = _board.pop().uci()
+        if _history:
+            _history.pop()
+        
+        logger.info("Cofnieto ruch do edycji: %s | FEN: %s", old_move, _board.fen())
+        
+        # Wykonaj nowy ruch
+        new_move_normalized = _normalize_auto_promotion_uci(_board, new_move_uci)
+        
+        try:
+            move = chess.Move.from_uci(new_move_normalized)
+        except ValueError as exc:
+            # Przywróć stary ruch jeśli nowy jest nieprawidłowy
+            _board.push_uci(old_move)
+            _history.append(old_move)
+            _save_state_to_disk()
+            raise ValueError(f"Niepoprawne UCI '{new_move_uci}': {exc}") from exc
+
+        if move not in _board.legal_moves:
+            # Przywróć stary ruch jeśli nowy jest nielegalny
+            _board.push_uci(old_move)
+            _history.append(old_move)
+            _save_state_to_disk()
+            sample = [m.uci() for m in list(_board.legal_moves)[:8]]
+            raise ValueError(
+                f"Ruch {new_move_normalized} jest nielegalny. Przykłady legalnych: {sample}"
+            )
+
+        _board.push(move)
+        _history.append(new_move_normalized)
+        _save_state_to_disk()
+        logger.info("Edycja ruchu: %s -> %s | FEN: %s", old_move, new_move_normalized, _board.fen())
+        
+        return old_move, _board.fen()
+
+
 def get_fen() -> str:
     with _lock:
         return _board.fen()

@@ -319,6 +319,11 @@ interface OccupancyResponse {
   occupancy_method: string;
 }
 
+interface OccupancyValidationResult {
+  isValid: boolean;
+  message: string | null;
+}
+
 const API = "http://localhost:8000";
 
 const STARTING_FEN =
@@ -504,6 +509,30 @@ function buildEvaluatePayload(
   return body;
 }
 
+function getExpectedOccupiedSquaresFromFen(fen: string): string[] {
+  const boardPart = fen.split(" ")[0] ?? "";
+  const squares: string[] = [];
+  let rank = 8;
+  let file = 0;
+
+  for (const ch of boardPart) {
+    if (ch === "/") {
+      rank -= 1;
+      file = 0;
+      continue;
+    }
+    if (/\d/.test(ch)) {
+      file += Number(ch);
+      continue;
+    }
+    const square = `${String.fromCharCode("a".charCodeAt(0) + file)}${rank}`;
+    squares.push(square);
+    file += 1;
+  }
+
+  return squares;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ViewTab>("live");
   const [fen, setFen] = useState(STARTING_FEN);
@@ -552,6 +581,14 @@ export default function App() {
   // Poprzedni FEN — do analizy rodzaju ruchu i odtwarzania dźwięków
   const prevFenRef = useRef<string>(STARTING_FEN);
   const prevVirtualFenRef = useRef<string>(STARTING_FEN);
+  
+  // Stan edycji ruchów
+  const [editingMove, setEditingMove] = useState(false);
+  const [editMoveValue, setEditMoveValue] = useState("");
+  const [editMoveError, setEditMoveError] = useState<string | null>(null);
+  const [validationRequired, setValidationRequired] = useState(false);
+  const [validationLoading, setValidationLoading] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Ref do bieżących ustawień silnika — pozwala wywołać analizę ze świeżymi
   // wartościami bez dodawania ich do deps useEffect nasłuchującego na FEN
@@ -605,10 +642,10 @@ export default function App() {
   }, [analysisFen]);
 
   // Pobiera aktualny stan gry z backendu i synchronizuje FEN planszy
-  const fetchGameState = useCallback(async () => {
+  const fetchGameState = useCallback(async (): Promise<GameStateResponse | null> => {
     try {
       const res = await fetch(`${API}/cv/game/state`);
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const data = (await res.json()) as GameStateResponse;
       setGameState(data);
       setFen(data.fen);
@@ -629,8 +666,10 @@ export default function App() {
         
         void evaluateWithFen(data.fen, LIVE_EVAL_DEPTH);
       }
+      return data;
     } catch {
       setLiveError("No connection to CV backend.");
+      return null;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -641,43 +680,49 @@ export default function App() {
     await fetchGameState();
   }, [fetchGameState]);
 
-  // Sprawdza occupancy przed startem gry
-  const validateOccupancy = async (): Promise<boolean> => {
+  // Sprawdza occupancy względem aktualnego FEN (a nie pozycji startowej).
+  const validateOccupancy = async (): Promise<OccupancyValidationResult> => {
     try {
       const res = await fetch(`${API}/cv/occupancy`);
       if (!res.ok) {
-        throw new Error("Cannot validate board occupancy.");
+        throw new Error("Cannot validate board occupancy");
       }
       const data = (await res.json()) as OccupancyResponse;
-      
-      if (data.occupied_count !== 32) {
-        const expectedSquares = [
-          'a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1', // białe figury
-          'a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2', // białe pionki
-          'a7', 'b7', 'c7', 'd7', 'e7', 'f7', 'g7', 'h7', // czarne pionki
-          'a8', 'b8', 'c8', 'd8', 'e8', 'f8', 'g8', 'h8'  // czarne figury
-        ];
-        
-        const wronglyEmpty = expectedSquares.filter(sq => !data.occupied_squares.includes(sq));
-        const wronglyOccupied = data.occupied_squares.filter(sq => !expectedSquares.includes(sq));
-        
-        let errorMsg = `Wykryto ${data.occupied_count} figur zamiast 32. `;
+
+      // Najpierw spróbuj użyć świeżego stanu z backendu, aby nie bazować na starym state z Reacta.
+      let expectedFen = gameState?.fen ?? fen;
+      try {
+        const stateRes = await fetch(`${API}/cv/game/state`);
+        if (stateRes.ok) {
+          const stateData = (await stateRes.json()) as GameStateResponse;
+          expectedFen = stateData.fen;
+        }
+      } catch {
+        // Soft-fail: użyjemy local state.
+      }
+
+      const expectedSquares = getExpectedOccupiedSquaresFromFen(expectedFen);
+      const wronglyEmpty = expectedSquares.filter((sq) => !data.occupied_squares.includes(sq));
+      const wronglyOccupied = data.occupied_squares.filter((sq) => !expectedSquares.includes(sq));
+
+      if (wronglyEmpty.length > 0 || wronglyOccupied.length > 0) {
+        let errorMsg =
+          `Detected ${data.occupied_count} occupied squares, expected ${expectedSquares.length}. `;
         if (wronglyEmpty.length > 0) {
-          errorMsg += `Missing pieces on: ${wronglyEmpty.join(', ')}. `;
+          errorMsg += `Missing pieces on: ${wronglyEmpty.join(", ")}. `;
         }
         if (wronglyOccupied.length > 0) {
-          errorMsg += `Incorrectly detected pieces on: ${wronglyOccupied.join(', ')}.`;
+          errorMsg += `Incorrectly detected pieces on: ${wronglyOccupied.join(", ")}.`;
         }
-        
-        setOccupancyError(errorMsg);
-        return false;
+        return { isValid: false, message: errorMsg };
       }
-      
-      setOccupancyError(null);
-      return true;
+
+      return { isValid: true, message: null };
     } catch (e: unknown) {
-      setOccupancyError(e instanceof Error ? e.message : "Board validation error.");
-      return false;
+      return {
+        isValid: false,
+        message: e instanceof Error ? e.message : "Board validation error.",
+      };
     }
   };
 
@@ -688,11 +733,13 @@ export default function App() {
     setOccupancyError(null);
     
     // Najpierw sprawdź occupancy
-    const occupancyValid = await validateOccupancy();
-    if (!occupancyValid) {
+    const occupancyValidation = await validateOccupancy();
+    if (!occupancyValidation.isValid) {
+      setOccupancyError(occupancyValidation.message);
       setLiveLoading(false);
       return;
     }
+    setOccupancyError(null);
     
     try {
       const res = await fetch(`${API}/cv/game/detector/start`, { method: "POST" });
@@ -701,7 +748,13 @@ export default function App() {
         throw new Error(parseApiErrorPayload(data));
       }
       setDetectorRunning(true);
-      await fetchGameState();
+      const state = await fetchGameState();
+      // Po validate + start historia ruchów zwykle się nie zmienia, więc
+      // standardowy trigger auto-analizy (history_length++) się nie odpala.
+      // Wymuszamy analizę bieżącej pozycji przy starcie live.
+      if (state?.fen) {
+        void evaluateWithFen(state.fen, LIVE_EVAL_DEPTH);
+      }
     } catch (e: unknown) {
       setLiveError(e instanceof Error ? e.message : "Failed to start detector.");
     } finally {
@@ -732,11 +785,101 @@ export default function App() {
       prevFenRef.current = STARTING_FEN; // Reset FEN referencyjnego
       setResult(null);
       setError(null);
+      setValidationRequired(false);
+      setEditingMove(false);
+      setEditMoveError(null);
+      setValidationError(null);
       await fetchGameState();
     } catch (e: unknown) {
       setLiveError(e instanceof Error ? e.message : "Failed to reset game.");
     } finally {
       setLiveLoading(false);
+    }
+  };
+
+  // Rozpoczyna edycję ostatniego ruchu
+  const handleStartEditMove = () => {
+    if (!gameState || gameState.history.length === 0) return;
+    if (detectorRunning) {
+      // Zatrzymujemy live polling przed ręczną korektą ruchu.
+      setDetectorRunning(false);
+    }
+    const lastMove = gameState.history[gameState.history.length - 1];
+    setEditMoveValue(lastMove);
+    setEditingMove(true);
+    setEditMoveError(null);
+    setValidationError(null);
+  };
+
+  // Anuluje edycję ruchu
+  const handleCancelEditMove = () => {
+    setEditingMove(false);
+    setEditMoveValue("");
+    setEditMoveError(null);
+    setValidationRequired(false);
+    setValidationError(null);
+  };
+
+  // Wysyła edytowany ruch do backendu
+  const handleSubmitEditMove = async () => {
+    if (!editMoveValue.trim()) return;
+    
+    setLiveLoading(true);
+    setEditMoveError(null);
+    
+    try {
+      const res = await fetch(`${API}/cv/game/move/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_move_uci: editMoveValue.trim() }),
+      });
+      
+      if (!res.ok) {
+        const data: unknown = await res.json();
+        throw new Error(parseApiErrorPayload(data));
+      }
+      
+      const result = await res.json();
+      setEditingMove(false);
+      setValidationRequired(true);
+      await fetchGameState();
+      
+      setLiveError(`Ruch edytowany: ${result.old_move_uci} → ${result.new_move_uci}. Ustaw figury zgodnie z nową pozycją i sprawdź walidację.`);
+    } catch (e: unknown) {
+      setEditMoveError(e instanceof Error ? e.message : "Failed to edit move.");
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
+  // Waliduje pozycję po edycji ruchu
+  const handleValidatePosition = async () => {
+    setValidationLoading(true);
+    setValidationError(null);
+    
+    try {
+      const res = await fetch(`${API}/cv/game/validate-position`, {
+        method: "POST",
+      });
+      
+      if (!res.ok) {
+        const data: unknown = await res.json();
+        throw new Error(parseApiErrorPayload(data));
+      }
+      
+      const result = await res.json();
+      
+      if (result.position_matches) {
+        setValidationRequired(false);
+        setLiveError(null);
+        setValidationError(null);
+      } else {
+        setValidationError(result.message);
+      }
+    } catch (e: unknown) {
+      setValidationError(e instanceof Error ? e.message : "Validation failed.");
+    } finally {
+      setValidationLoading(false);
     }
   };
 
@@ -1006,10 +1149,12 @@ export default function App() {
       <div className="live-col">
         <div className="live-section">
           <div className="live-section-header">
-            <span className="live-section-title">Live Camera</span>
-            <span className={`live-badge${detectorRunning ? " live-badge--active" : ""}`}>
-              {detectorRunning ? "● LIVE" : "○ IDLE"}
-            </span>
+            <span className="live-section-title">Live Analysis</span>
+            <span
+              className={`live-badge${detectorRunning ? " live-badge--active" : ""}`}
+              aria-label={detectorRunning ? "Live active" : "Live inactive"}
+              title={detectorRunning ? "Live active" : "Live inactive"}
+            />
           </div>
 
           {/* Tabela stanu gry */}
@@ -1053,12 +1198,76 @@ export default function App() {
             <div className="move-history-wrap">
               <span className="control-label">Last moves</span>
               <div className="move-history-list">
-                {gameState.history.slice(-10).map((move, i) => (
-                  <span key={i} className="history-move-chip">
-                    {move}
-                  </span>
-                ))}
+                {gameState.history.slice(-10).map((move, i, moves) => {
+                  const isLastMove = i === moves.length - 1;
+                  return (
+                    <span 
+                      key={i} 
+                      className={`history-move-chip ${isLastMove ? "history-move-chip--editable" : ""}`}
+                      onClick={isLastMove && !editingMove ? handleStartEditMove : undefined}
+                      title={isLastMove && !editingMove ? "Click to edit move" : undefined}
+                    >
+                      {move}
+                      {isLastMove && !editingMove && (
+                        <span className="edit-move-icon">✎</span>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
+            </div>
+          )}
+
+          {/* Panel edycji ruchu */}
+          {editingMove && (
+            <div className="edit-move-panel">
+              <span className="control-label">Edit last move</span>
+              <div className="edit-move-input-row">
+                <input
+                  type="text"
+                  value={editMoveValue}
+                  onChange={(e) => setEditMoveValue(e.target.value)}
+                  placeholder="Enter move in UCI format (e.g., e2e4)"
+                  className="edit-move-input"
+                  disabled={liveLoading}
+                />
+                <button
+                  type="button"
+                  className="edit-move-btn edit-move-btn--confirm"
+                  onClick={() => void handleSubmitEditMove()}
+                  disabled={liveLoading || !editMoveValue.trim()}
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  className="edit-move-btn edit-move-btn--cancel"
+                  onClick={handleCancelEditMove}
+                  disabled={liveLoading}
+                >
+                  ✗
+                </button>
+              </div>
+              {editMoveError && <div className="error-msg edit-move-error">⚠ {editMoveError}</div>}
+            </div>
+          )}
+
+          {/* Panel walidacji pozycji */}
+          {validationRequired && !editingMove && (
+            <div className="validation-panel">
+              <span className="control-label">Position Validation Required</span>
+              <p className="validation-instruction">
+                Position the pieces according to the new move and click "Validate" to continue the game.
+              </p>
+              <button
+                type="button"
+                className="validation-btn"
+                onClick={() => void handleValidatePosition()}
+                disabled={validationLoading}
+              >
+                {validationLoading ? "Validating..." : "Validate Position"}
+              </button>
+              {validationError && <div className="error-msg validation-error">⚠ {validationError}</div>}
             </div>
           )}
 
@@ -1068,7 +1277,7 @@ export default function App() {
               type="button"
               className={`live-btn live-btn--start${detectorRunning ? " live-btn--stop" : ""}`}
               onClick={() => void (detectorRunning ? handleStop() : handleStart())}
-              disabled={liveLoading}
+              disabled={liveLoading || editingMove || validationRequired}
             >
               {liveLoading
                 ? "…"

@@ -165,3 +165,34 @@ class UndoMoveCollectResponse(BaseModel):
     occupied_deleted: int
     empty_deleted: int
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Edycja ruchu
+# ---------------------------------------------------------------------------
+
+
+class EditMoveRequest(BaseModel):
+    """Żądanie edycji ostatniego ruchu - najpierw cofa ostatni ruch, potem wykonuje nowy."""
+    new_move_uci: str
+
+
+class EditMoveResponse(BaseModel):
+    """Odpowiedź po edycji ruchu z informacją o nowej pozycji do walidacji."""
+    ok: bool
+    old_move_uci: str
+    new_move_uci: str
+    fen_after_edit: str
+    message: str
+    requires_validation: bool  # True - gracz musi ustawić figury zgodnie z nowym FEN
+
+
+class ValidatePositionResponse(BaseModel):
+    """Odpowiedź po walidacji pozycji przez kamerę."""
+    ok: bool
+    position_matches: bool
+    expected_occupied: list[str]
+    actual_occupied: list[str]
+    missing_pieces: list[str]  # pola które powinny być zajęte a nie są
+    extra_pieces: list[str]    # pola które są zajęte a nie powinny być
+    message: str
