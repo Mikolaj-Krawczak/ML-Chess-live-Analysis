@@ -49,3 +49,7 @@ stockfish/
 .env
 .env.local
 .env.*.local
+
+
+cv/
+cv/**
