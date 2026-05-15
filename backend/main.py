@@ -33,7 +33,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Ścieżka do Stockfisha: .env (STOCKFISH_PATH) lub domyślna lokalizacja w repozytorium ---
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_REPO_ROOT / ".env")
