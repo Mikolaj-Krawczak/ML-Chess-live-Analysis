@@ -17,8 +17,6 @@ const DEFAULT_ELO = 1500;
 const DEFAULT_SKILL = 10;
 
 type StrengthMode = "full" | "elo" | "skill";
-
-/** Odpowiedź z backendu FastAPI /evaluate (EvalResponse) */
 export interface EvalResponse {
   score: number;
   score_type: "cp" | "mate";
@@ -30,11 +28,11 @@ export interface EvalResponse {
   is_valid: boolean;
 }
 
-// Klamp wartości do przedziału
+
 const clamp = (v: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, v));
 
-// Zamień ocenę na etykietę tekstową
+
 function formatScore(
   score: number,
   scoreType: "cp" | "mate",
@@ -269,13 +267,13 @@ export default function App() {
   return (
     <main className="app">
       <header className="header">
-        <h1>
+        {/* <h1>
           Chess <span className="title-live">Live</span>{" "}
           <span className="title-analysis">Analysis</span>
-        </h1>
-        <p>
+        </h1> */}
+        {/* <p>
           Analiza pozycji · <strong>Stockfish 18</strong> · silnik UCI · MVP v0.1
-        </p>
+        </p> */}
       </header>
 
       <div className="board-col" ref={boardColRef}>
@@ -310,7 +308,7 @@ export default function App() {
           {result ? (
             <>
               <div className="board-info-card">
-                <div className="bic-label">Kolej</div>
+                <div className="bic-label">Turn </div>
                 <div className="bic-val bic-val--turn">
                   {result.turn === "white" ? (
                     <>
@@ -353,7 +351,7 @@ export default function App() {
 
       <div className="input-panel">
         <label className="input-label" htmlFor="fen-input">
-          Pozycja FEN
+          Position in FEN notation
         </label>
         <textarea
           id="fen-input"

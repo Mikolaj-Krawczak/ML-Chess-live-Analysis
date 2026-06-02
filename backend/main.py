@@ -1,17 +1,9 @@
-"""
-API FastAPI do oceny pozycji szachowej przez silnik UCI (Stockfish).
-
-Endpoint POST /evaluate przyjmuje FEN i parametry analizy; zwraca ocenę w pionkach
-lub informację o macie, najlepszy ruch i linię PV. Przed importem python-chess
-na Windows ustawiana jest polityka pętli zdarzeń Proactor (wymagana do subprocess).
-"""
-
 import asyncio
 import os
 import sys
 from pathlib import Path
 
-# Na Windows domyślny SelectorEventLoop nie obsługuje subprocess — Stockfish przez UCI tego wymaga.
+
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -22,9 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
-# --- Aplikacja HTTP ---
-
-app = FastAPI(title="Chess Vision API")
+app = FastAPI(title="ML CHESS")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,7 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_REPO_ROOT / ".env")
 _DEFAULT_STOCKFISH = _REPO_ROOT / "stockfish" / "stockfish-windows-x86-64-avx2.exe"
@@ -41,20 +30,18 @@ STOCKFISH_PATH = os.environ.get("STOCKFISH_PATH", str(_DEFAULT_STOCKFISH))
 
 
 def _clamp_int(value: int, low: int, high: int) -> int:
-    """Ogranicza liczbę całkowitą do zamkniętego przedziału [low, high]."""
+    
     return max(low, min(high, value))
 
 
-# --- Modele żądania i odpowiedzi (Pydantic) ---
 
 
-class FENRequest(BaseModel):
-    """Wejście analizy: pozycja FEN oraz limity silnika."""
+class FENRequest(BaseModel):    
 
     fen: str
     depth: int = 18
-    skill_level: int | None = None  # 0–20, None = pełna siła (gdy brak limitu Elo)
-    elo_limit: int | None = None    # 1320–3190, UCI_LimitStrength; pierwszeństwo nad skill_level
+    skill_level: int | None = None  # 0–20
+    elo_limit: int | None = None    # 1320–3190, UCI_LimitStrength;
 
     @field_validator("fen")
     @classmethod
@@ -82,23 +69,17 @@ class FENRequest(BaseModel):
 
 
 class EvalResponse(BaseModel):
-    """Wynik analizy: ocena z perspektywy białych, typ, PV, głębokość, strona ruchu."""
-
-    score: float  # pionki: dodatnie = przewaga białych
-    score_type: str  # "cp" lub "mate"
+    
+    score: float  
+    score_type: str  
     mate_in: int | None
     best_move: str | None
-    pv: list[str] # principal variation — pełna linia ruchów UC
+    pv: list[str] 
     depth: int
-    turn: str  # "white" | "black" — czyja kolej na szachownicy
+    turn: str  
     is_valid: bool
 
-
-# --- Pomocnicze: PV, strona ruchu, mapowanie wyniku silnika na odpowiedź API ---
-
-
 def _extract_pv(info: chess.engine.InfoDict) -> list[str]:
-    """Zwraca principal variation jako listę ruchów w notacji UCI."""
     raw = info.get("pv")
     if not raw:
         return []
@@ -106,7 +87,6 @@ def _extract_pv(info: chess.engine.InfoDict) -> list[str]:
 
 
 def _turn_label(board: chess.Board) -> str:
-    """Etykieta strony mającej ruch (dla pola turn w JSON)."""
     return "white" if board.turn == chess.WHITE else "black"
 
 
@@ -115,10 +95,8 @@ def _eval_response_from_engine(
     info: chess.engine.InfoDict,
     requested_depth: int,
 ) -> EvalResponse:
-    """
-    Buduje EvalResponse z obiektu info zwróconego przez engine.analyse().
-    Perspektywa oceny: zawsze białe (score_obj.white()).
-    """
+
+    
     pov = info.get("score")
     if pov is None:
         raise HTTPException(
@@ -134,7 +112,6 @@ def _eval_response_from_engine(
 
     if score_obj.is_mate():
         mate_val = score_obj.mate()
-        # W trybie mata zwracamy stałą „skalę” ±100; szczegół w mate_in
         score_display = 100.0 if mate_val > 0 else -100.0
         return EvalResponse(
             score=score_display,
@@ -162,9 +139,6 @@ def _eval_response_from_engine(
         turn=turn,
         is_valid=True,
     )
-
-
-# --- Endpointy ---
 
 
 @app.get("/health")
