@@ -84,12 +84,11 @@ def _get_engine() -> chess.engine.SimpleEngine:
             raise HTTPException(
                 status_code=500,
                 detail=(
-                    f"Stockfish nie znaleziony pod: {STOCKFISH_PATH}. "
-                    "Ustaw zmienną środowiskową STOCKFISH_PATH."
-                ),
+                    f"Stockfish hasn't been found at {STOCKFISH_PATH}. "
+                    ),
             )
         _engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
-        _log.info("Stockfish engine uruchomiony (persistent).")
+        _log.info("Stockfish engine has been initialized from: %s", STOCKFISH_PATH)
     return _engine
 
 

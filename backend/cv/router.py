@@ -365,40 +365,60 @@ def clear_calibration():
 # ---------------------------------------------------------------------------
 
 _CALIBRATION_UI_HTML = """<!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Kalibracja szachownicy</title>
+<title>Chessboard calibration</title>
 <style>
+  @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap");
+
+  :root {
+    --bg-deep: #050607;
+    --bg: #0a0e0d;
+    --surface: #101816;
+    --surface-elevated: #141f1c;
+    --surface-muted: #0d1412;
+    --border: rgba(212, 175, 88, 0.18);
+    --border-strong: rgba(212, 175, 88, 0.32);
+    --text: #e8e4db;
+    --text-dim: #9a9488;
+    --gold: #d4af58;
+    --gold-bright: #f0d78c;
+    --accent: #4fa878;
+    --accent-hover: #6bc995;
+    --danger: #f0a0a0;
+    --font-ui: "DM Mono", ui-monospace, monospace;
+  }
+
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#111;color:#eee;font-family:monospace;height:100vh;display:flex;flex-direction:column}
-  #toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1e1e1e;border-bottom:1px solid #333;flex-shrink:0}
-  button{padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold}
-  #btn-refresh{background:#2563eb;color:#fff}
-  #btn-reset{background:#7c3aed;color:#fff}
-  #btn-calibrate{background:#16a34a;color:#fff;display:none}
-  #btn-warped{background:#d97706;color:#fff;display:none}
-  button:hover{filter:brightness(1.15)}
-  #status{flex:1;font-size:13px;padding:0 8px}
+  body{font-family:var(--font-ui);font-size:13px;line-height:1.5;color:var(--text);background:linear-gradient(168deg,var(--bg) 0%,var(--bg-deep) 55%,#060807 100%);min-height:100vh;display:flex;flex-direction:column}
+  #toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(16,24,22,0.94);border-bottom:1px solid var(--border);flex-shrink:0}
+  button{padding:8px 16px;border:none;border-radius:12px;cursor:pointer;font:500 0.95rem var(--font-ui);text-transform:uppercase;letter-spacing:0.05em;transition:transform .16s ease,filter .16s ease,background .16s ease}
+  button:hover{transform:translateY(-1px);filter:brightness(1.08)}
+  #btn-refresh{background:var(--accent);color:var(--bg-deep)}
+  #btn-reset{background:var(--gold);color:var(--bg-deep)}
+  #btn-calibrate{background:var(--accent-hover);color:var(--bg-deep);display:none}
+  #btn-warped{background:rgba(255,255,255,0.08);color:var(--text);display:none}
+  #status{flex:1;font-size:0.95rem;padding:0 10px;color:var(--text-dim)}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
   #main{flex:1;display:flex;overflow:hidden}
-  #canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:crosshair}
+  #canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:crosshair;background:var(--surface);border:1px solid var(--border)}
   canvas{display:block;width:100%;height:100%;object-fit:contain}
-  #preview-wrap{width:0;overflow:hidden;transition:width .2s;background:#0a0a0a;border-left:1px solid #333;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #preview-wrap{width:0;overflow:hidden;transition:width .2s;background:var(--surface-elevated);border-left:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center}
   #preview-wrap.visible{width:420px}
-  #preview-label{font-size:11px;color:#888;padding:6px;text-align:center}
-  #preview-img{max-width:400px;max-height:calc(100vh - 80px);border:1px solid #333}
-  #coords-list{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);padding:8px;border-radius:6px;font-size:12px;line-height:1.8}
-  .msg-ok{color:#4ade80} .msg-err{color:#f87171} .msg-info{color:#facc15}
+  #preview-label{font-size:0.82rem;color:var(--text-dim);padding:10px;text-align:center}
+  #preview-img{max-width:400px;max-height:calc(100vh - 80px);border:1px solid rgba(212,175,88,0.16)}
+  #coords-list{position:absolute;top:10px;right:10px;background:rgba(6,8,7,0.8);padding:10px;border-radius:14px;font-size:0.92rem;line-height:1.7;color:var(--text-dim);border:1px solid var(--border)}
+  .msg-ok{color:#7ee0b8} .msg-err{color:#f0a0a0} .msg-info{color:var(--gold-bright)}
 </style>
 </head>
 <body>
 <div id="toolbar">
-  <button id="btn-refresh" title="F">&#8635; Odśwież klatkę</button>
-  <button id="btn-reset" title="R">&#10006; Reset punktów</button>
-  <button id="btn-calibrate">&#10003; Kalibruj</button>
-  <button id="btn-warped">&#9654; Pokaż warped</button>
-  <span id="status">Ładowanie obrazu...</span>
+  <button id="btn-refresh" class="live-btn live-btn--start" title="F">&#8635; Refresh</button>
+  <button id="btn-reset" class="arrow-toggle arrow-toggle--active" title="R">&#10006; Reset points</button>
+  <button id="btn-calibrate" class="live-btn live-btn--start">&#10003; Calibrate</button>
+  <button id="btn-warped" class="arrow-toggle">&#9654; Show warped</button>
+  <span id="status">Loading image...</span>
 </div>
 <div id="main">
   <div id="canvas-wrap">
@@ -406,24 +426,24 @@ _CALIBRATION_UI_HTML = """<!DOCTYPE html>
     <div id="coords-list"></div>
   </div>
   <div id="preview-wrap">
-    <div id="preview-label">Podgląd po kalibracji</div>
+        <div id="preview-label">Warped preview</div>
     <img id="preview-img" src="" alt="warped">
   </div>
 </div>
 
 <script>
-const LABELS = ['TL lewy-górny','TR prawy-górny','BR prawy-dolny','BL lewy-dolny'];
+const LABELS = ['TL top-left','TR top-right','BR bottom-right','BL bottom-left'];
 const COLORS = ['#22c55e','#facc15','#ef4444','#60a5fa'];
 
 const cvs = document.getElementById('cvs');
 const ctx = cvs.getContext('2d');
 let img = new Image();
-let pts = [];       // [{x,y}] — współrzędne w pikselach oryginalnego obrazu
+let pts = [];       // [{x,y}] — coordinates in original image pixels
 let imgW = 0, imgH = 0;
 
-// ---- Ładowanie obrazu ----
+// ---- Load frame ----
 async function loadFrame() {
-  setStatus('Pobieranie klatki z kamery...', 'info');
+  setStatus('Loading camera frame...', 'info');
 
   // Pobierz status kamery żeby mieć URL w razie błędu
   let cameraUrl = '';
@@ -433,8 +453,8 @@ async function loadFrame() {
     cameraUrl = hd.camera_url || '';
     if (!hd.camera_reachable) {
       setStatus(
-        `&#9888; Kamera niedostępna: <b>${cameraUrl}</b><br>` +
-        `Sprawdź czy aplikacja IPWebcam działa na telefonie i czy jesteś w tej samej sieci WiFi. ` +
+        `&#9888; Camera unavailable: <b>${cameraUrl}</b><br>` +
+        `Check IPWebcam on your phone and ensure it is on the same WiFi network. ` +
         `<a href="/cv/health" target="_blank" style="color:#60a5fa">health</a>`,
         'err'
       );
@@ -450,15 +470,15 @@ async function loadFrame() {
     resizeCanvas();
     draw();
     setStatus(
-      `Kamera ${imgW}×${imgH}px — kliknij punkt 1/4: <b>${LABELS[0]}</b>`,
+      `Camera ${imgW}×${imgH}px — click point 1/4: <b>${LABELS[0]}</b>`,
       'info'
     );
     updateUI();
   };
   img.onerror = () => setStatus(
-    `&#9888; Nie można pobrać obrazu z kamery` +
+    `&#9888; Cannot load camera image` +
     (cameraUrl ? ` (<b>${cameraUrl}</b>)` : '') +
-    ` — sprawdź IPWebcam i IP telefonu.`,
+    ` — check IPWebcam and phone network.`,
     'err'
   );
   img.src = '/cv/snapshot.jpg?t=' + Date.now();
@@ -564,11 +584,11 @@ cvs.addEventListener('click', (e) => {
   updateCoordsList();
   if (pts.length < 4) {
     setStatus(
-      `Punkt ${pts.length}/4 dodany — kliknij punkt ${pts.length+1}/4: <b>${LABELS[pts.length]}</b>`,
+      `Point ${pts.length}/4 added — click point ${pts.length+1}/4: <b>${LABELS[pts.length]}</b>`,
       'info'
     );
   } else {
-    setStatus('4 punkty zaznaczone — kliknij <b>Kalibruj</b> lub R żeby zacząć od nowa.', 'ok');
+    setStatus('4 points selected — press Enter to confirm or R to reset.', 'ok');
   }
 });
 
@@ -595,12 +615,12 @@ document.getElementById('btn-reset').onclick = () => {
   updateUI();
   document.getElementById('preview-wrap').classList.remove('visible');
   document.getElementById('btn-warped').style.display = 'none';
-  setStatus(`Reset — kliknij punkt 1/4: <b>${LABELS[0]}</b>`, 'info');
+  setStatus(`Reset — click point 1/4: <b>${LABELS[0]}</b>`, 'info');
 };
 
 document.getElementById('btn-calibrate').onclick = async () => {
   const corners = pts.map(p => [p.x, p.y]);
-  setStatus('Wysyłanie kalibracji...', 'info');
+  setStatus('Sending calibration...', 'info');
   try {
     const resp = await fetch('/cv/calibrate', {
       method: 'POST',
@@ -609,14 +629,14 @@ document.getElementById('btn-calibrate').onclick = async () => {
     });
     const data = await resp.json();
     if (resp.ok) {
-      setStatus('&#10003; ' + (data.message || 'Kalibracja zakończona!'), 'ok');
+      setStatus('&#10003; ' + (data.message || 'Calibration completed!'), 'ok');
       document.getElementById('btn-warped').style.display = '';
       showWarpedPreview();
     } else {
-      setStatus('Błąd: ' + (data.detail || resp.statusText), 'err');
+      setStatus('Error: ' + (data.detail || resp.statusText), 'err');
     }
   } catch (err) {
-    setStatus('Błąd połączenia z backendem: ' + err, 'err');
+    setStatus('Connection error to backend: ' + err, 'err');
   }
 };
 

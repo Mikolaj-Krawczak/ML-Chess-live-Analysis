@@ -12,20 +12,17 @@ from dotenv import load_dotenv
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_REPO_ROOT / ".env")
 
-# ---------------------------------------------------------------------------
-# Kamera
-# ---------------------------------------------------------------------------
 
-CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.112")
+CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.114")
 CAMERA_PORT: int = int(os.environ.get("CV_CAMERA_PORT", "8080"))
 
-# /shot.jpg — pojedyncza klatka JPEG (szybszy polling niż MJPEG)
+
 CAMERA_SNAPSHOT_URL: str = os.environ.get(
     "CV_CAMERA_SNAPSHOT_URL",
     f"http://{CAMERA_HOST}:{CAMERA_PORT}/shot.jpg",
 )
 
-# /video — strumień MJPEG dla cv2.VideoCapture
+
 CAMERA_STREAM_URL: str = os.environ.get(
     "CV_CAMERA_STREAM_URL",
     f"http://{CAMERA_HOST}:{CAMERA_PORT}/video",
@@ -33,9 +30,7 @@ CAMERA_STREAM_URL: str = os.environ.get(
 
 CAMERA_TIMEOUT_S: float = float(os.environ.get("CV_CAMERA_TIMEOUT_S", "1.5"))
 
-# ---------------------------------------------------------------------------
-# Kalibracja / warp
-# ---------------------------------------------------------------------------
+
 
 BOARD_SIZE_PX: int = int(os.environ.get("CV_BOARD_SIZE_PX", "640"))
 CELL_SIZE_PX: int = BOARD_SIZE_PX // 8
@@ -47,7 +42,7 @@ CALIBRATION_PATH: Path = Path(
     )
 )
 
-# 7×7 wewnętrznych narożników dla findChessboardCorners (8×8 pól)
+
 CHESSBOARD_INNER_CORNERS: tuple[int, int] = (7, 7)
 
 # ---------------------------------------------------------------------------

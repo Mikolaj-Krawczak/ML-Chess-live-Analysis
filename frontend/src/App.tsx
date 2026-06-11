@@ -4,25 +4,23 @@ import { Chess } from "chess.js";
 import "./App.css";
 import BoardPanel from "./BoardPanel";
 
-// System dźwięków szachowych
+
 class ChessAudio {
   private static instance: ChessAudio;
   private sounds: Record<string, HTMLAudioElement> = {};
   
   constructor() {
-    // Preload wszystkich dźwięków
+
     this.sounds.move = new Audio('/sounds/move.mp3');
     this.sounds.capture = new Audio('/sounds/capture.mp3');
     this.sounds.castle = new Audio('/sounds/castle.mp3');
     this.sounds.promote = new Audio('/sounds/promote.mp3');
     this.sounds.check = new Audio('/sounds/move-check.mp3');
     
-    // Ustaw głośność i optymalizacje dla szybkiego odtwarzania
     Object.values(this.sounds).forEach(audio => {
       audio.volume = 0.3;
       audio.preload = 'auto';
-      // Wymuś natychmiastowe odtwarzanie bez buforowania
-      audio.load();
+            audio.load();
     });
   }
   

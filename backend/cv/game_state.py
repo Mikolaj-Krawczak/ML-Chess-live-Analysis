@@ -1,7 +1,5 @@
 """
 Stan gry szachowej — singleton python-chess.Board.
-
-Jedyne źródło prawdy o pozycji. Thread-safe (Lock).
 Integruje się z move_detector (push ruchów) i /evaluate (FEN → Stockfish).
 """
 
