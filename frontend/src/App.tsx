@@ -587,6 +587,7 @@ export default function App() {
   const [validationRequired, setValidationRequired] = useState(false);
   const [validationLoading, setValidationLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [copyHistoryStatus, setCopyHistoryStatus] = useState<string | null>(null);
 
   // Ref do bieżących ustawień silnika — pozwala wywołać analizę ze świeżymi
   // wartościami bez dodawania ich do deps useEffect nasłuchującego na FEN
@@ -809,6 +810,55 @@ export default function App() {
     setValidationError(null);
   };
 
+  const handleCopyMoveHistory = useCallback(async () => {
+    if (!gameState?.history || gameState.history.length === 0) return;
+    setCopyHistoryStatus(null);
+
+    try {
+      const game = new Chess();
+      const movePairs: string[] = [];
+
+      for (let i = 0; i < gameState.history.length; i += 2) {
+        const whiteUci = gameState.history[i];
+        const blackUci = gameState.history[i + 1];
+
+        const whiteFrom = whiteUci.slice(0, 2);
+        const whiteTo = whiteUci.slice(2, 4);
+        const whitePromotion = whiteUci.length > 4 ? whiteUci[4] : undefined;
+        const whiteResult = game.move({ from: whiteFrom, to: whiteTo, promotion: whitePromotion } as any);
+        const whiteSan = whiteResult?.san ?? whiteUci;
+
+        let turnText = `${Math.floor(i / 2) + 1}. ${whiteSan}`;
+
+        if (blackUci) {
+          const blackFrom = blackUci.slice(0, 2);
+          const blackTo = blackUci.slice(2, 4);
+          const blackPromotion = blackUci.length > 4 ? blackUci[4] : undefined;
+          const blackResult = game.move({ from: blackFrom, to: blackTo, promotion: blackPromotion } as any);
+          const blackSan = blackResult?.san ?? blackUci;
+          turnText += ` ${blackSan}`;
+        }
+
+        movePairs.push(turnText);
+      }
+
+      const historyText = movePairs.join(" ");
+
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API not available");
+      }
+      await navigator.clipboard.writeText(historyText);
+      setCopyHistoryStatus("Move history copied to clipboard.");
+      window.setTimeout(() => setCopyHistoryStatus(null), 2000);
+    } catch (error: unknown) {
+      setCopyHistoryStatus(
+        error instanceof Error
+          ? `Copy failed: ${error.message}`
+          : "Copy failed."
+      );
+    }
+  }, [gameState]);
+
   // Anuluje edycję ruchu
   const handleCancelEditMove = () => {
     setEditingMove(false);
@@ -842,7 +892,7 @@ export default function App() {
       setValidationRequired(true);
       await fetchGameState();
       
-      setLiveError(`Ruch edytowany: ${result.old_move_uci} → ${result.new_move_uci}. Ustaw figury zgodnie z nową pozycją i sprawdź walidację.`);
+      setLiveError(`Move updated: ${result.old_move_uci} → ${result.new_move_uci}. Position the pieces according to the new move and validate to continue the game.`);
     } catch (e: unknown) {
       setEditMoveError(e instanceof Error ? e.message : "Failed to edit move.");
     } finally {
@@ -1089,7 +1139,7 @@ export default function App() {
             className={`view-tab${activeTab === "analysis" ? " view-tab--active" : ""}`}
             onClick={() => setActiveTab("analysis")}
           >
-            Static Position Analysis
+            Static
           </button>
         </div>
       </header>
@@ -1133,7 +1183,7 @@ export default function App() {
               </div>
             </div>
           )}
-          {/* Materiał obok termometru */}
+          {/* Material display next to thermometer */}
           <MaterialDisplay 
             fen={boardFen} 
             boardOrientation={boardOrientation}
@@ -1194,7 +1244,18 @@ export default function App() {
           {/* Historia ostatnich 10 ruchów */}
           {gameState && gameState.history.length > 0 && (
             <div className="move-history-wrap">
-              <span className="control-label">Last moves</span>
+              <div className="move-history-header">
+                <span className="control-label">Last moves</span>
+                <button
+                  type="button"
+                  className="copy-history-btn"
+                  onClick={() => void handleCopyMoveHistory()}
+                  disabled={liveLoading}
+                  title="Copy full move history to clipboard"
+                >
+                Copy
+                </button>
+              </div>
               <div className="move-history-list">
                 {gameState.history.slice(-10).map((move, i, moves) => {
                   const isLastMove = i === moves.length - 1;
@@ -1213,10 +1274,13 @@ export default function App() {
                   );
                 })}
               </div>
+              {copyHistoryStatus && (
+                <div className="copy-history-status">{copyHistoryStatus}</div>
+              )}
             </div>
           )}
 
-          {/* Panel edycji ruchu */}
+          {/* Move edit panel */}
           {editingMove && (
             <div className="edit-move-panel">
               <span className="control-label">Edit last move</span>
@@ -1250,7 +1314,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Panel walidacji pozycji */}
+          {/* Position validation panel */}
           {validationRequired && !editingMove && (
             <div className="validation-panel">
               <span className="control-label">Position Validation Required</span>
@@ -1269,7 +1333,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Przyciski START / STOP / RESET */}
+          {/* START / STOP / RESET buttons */}
           <div className="live-btn-row">
             <button
               type="button"
@@ -1324,7 +1388,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* Info pod przyciskami: kolej i najlepszy ruch */}
+        {/* Info below buttons: turn and best move */}
         <div className="board-info">
           {result ? (
             <>
@@ -1375,7 +1439,7 @@ export default function App() {
       <div className="input-panel">
         <div className="section-divider" />
 
-        {/* ===== SEKCJA STOCKFISH ===== */}
+        {/* ===== STOCKFISH SECTION ===== */}
         <label className="input-label" htmlFor="fen-input">
           FEN Position
         </label>

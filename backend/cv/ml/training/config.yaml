@@ -1,32 +1,29 @@
-# Konfiguracja treningu Square Classifier (CNN)
-# Plik czytany przez train_classifier.py
 
-# --- Dane ---
-dataset_dir: "cv/ml/data/dataset"   # względem katalogu backend/
-patch_size: 70                        # px — rozmiar wejściowego patcha
-val_split: 0.2                        # 20% danych jako zbiór walidacyjny
+# Data 
+dataset_dir: "cv/ml/data/dataset"   
+patch_size: 70                      
+val_split: 0.2                       # 20% of data used as validation set
 
-# --- Architektura ---
-# SquareCNN: Conv(32)→Pool→Conv(64)→Pool→Conv(128)→Pool→FC(256)→FC(1)+Sigmoid
-dropout: 0.5                          # regularyzacja dropout w FC
 
-# --- Trening ---
-epochs: 50                            # długie szkolenie dla najlepszych efektów
-batch_size: 32                        # optymalny dla CPU i 32GB RAM
-learning_rate: 0.0003                 # bardzo precyzyjny learning rate
-weight_decay: 0.00001                 # delikatniejsza regularyzacja dla długiego treningu
+dropout: 0.5                         
 
-# --- Early stopping ---
-patience: 15                         # duża cierpliwość - pozwól modelowi się uczyć
+# Training 
+epochs: 50                           # long training for best performance
+batch_size: 32                       
+learning_rate: 0.0003               
+weight_decay: 0.00001                
 
-# --- Scheduler ---
-# lr zmniejsza się o factor co step_size epok - powolne dostrajanie
+#  Early stopping 
+patience: 15                         
+
+# Scheduler 
 lr_scheduler_factor: 0.3
 lr_scheduler_step_size: 15
 
-# --- Zapis ---
-weights_out: "cv/ml/weights/square_classifier.pth"  # względem backend/
-save_best_only: true                  # zachowaj tylko najlepsze wagi (val_loss)
 
-# --- Logi ---
-log_interval: 10                   # mniej logów dla długiego treningu
+#- Saving 
+weights_out: "cv/ml/weights/square_classifier.pth"  
+save_best_only: true          # keep only best model (based on val_loss)
+
+#  Logs 
+log_interval: 10              # fewer logs for long training runs

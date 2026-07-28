@@ -49,53 +49,45 @@ PATCH_SIZE = 70
 
 
 def _build_model():
-    """
-    Buduje architekturę SquareCNN.
-
-    Zdefiniowana tu zamiast w osobnym pliku żeby uniknąć dodatkowych importów.
-    """
+   
     import torch.nn as nn
 
     class SquareCNN(nn.Module):
-        """
-        Lekki CNN do binarnej klasyfikacji pól szachownicy (occupied / empty).
-
-        Wejście:  (batch, 1, 70, 70) — grayscale patch
-        Wyjście:  (batch, 1) — p(occupied) po Sigmoid
-        """
+      
         def __init__(self):
             super().__init__()
 
-            # Blok 1: 1→32 kanałów, 70×70 → 35×35
+            
+            # Block 1: 1→32 filters, 70×70 → 35×35
             self.block1 = nn.Sequential(
                 nn.Conv2d(1, 32, kernel_size=3, padding=1),
                 nn.BatchNorm2d(32),
                 nn.ReLU(inplace=True),
-                nn.MaxPool2d(2),           # 70 → 35
+                nn.MaxPool2d(2),          
             )
 
-            # Blok 2: 32→64, 35×35 → 17×17
+            # Block 2: 32→64 filters, 35×35 → 17×17
             self.block2 = nn.Sequential(
                 nn.Conv2d(32, 64, kernel_size=3, padding=1),
                 nn.BatchNorm2d(64),
                 nn.ReLU(inplace=True),
-                nn.MaxPool2d(2),           # 35 → 17
+                nn.MaxPool2d(2),          
             )
 
-            # Blok 3: 64→128, 17×17 → 8×8
+            # Block 3: 64→128 filters, 17×17 → 8×8
             self.block3 = nn.Sequential(
                 nn.Conv2d(64, 128, kernel_size=3, padding=1),
                 nn.BatchNorm2d(128),
                 nn.ReLU(inplace=True),
-                nn.MaxPool2d(2),           # 17 → 8
+                nn.MaxPool2d(2),          
             )
 
-            # Klasyfikator FC: 128*8*8=8192 → 256 → 1
+            # Classifier FC: 128*8*8=8192 → 256 → 1
             self.classifier = nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(128 * 8 * 8, 256),
                 nn.ReLU(inplace=True),
-                nn.Dropout(0.5),           # regularyzacja — ważna przy małym datasecie
+                nn.Dropout(0.5),           
                 nn.Linear(256, 1),
                 nn.Sigmoid(),              # p(occupied) ∈ [0,1]
             )
@@ -115,11 +107,11 @@ def _build_model():
 
 
 def _export_onnx(model, onnx_path: Path) -> bool:
-    """Eksportuje załadowany model PyTorch do formatu ONNX (CPU, batch=64)."""
+    """Exporting model to ONNX format (CPU, batch=64)."""
     try:
         import torch
         dummy = torch.zeros(64, 1, PATCH_SIZE, PATCH_SIZE)
-        # dynamo=False: legacy TorchScript exporter (nie wymaga onnxscript)
+        # dynamo=False: legacy TorchScript exporter 
         torch.onnx.export(
             model,
             dummy,
@@ -130,10 +122,10 @@ def _export_onnx(model, onnx_path: Path) -> bool:
             do_constant_folding=True,
             dynamo=False,
         )
-        logger.info("ONNX model wyeksportowany: %s", onnx_path)
+        logger.info("ONNX model exported: %s", onnx_path)
         return True
     except Exception as exc:
-        logger.warning("Eksport ONNX nieudany: %s", exc)
+        logger.warning("ONNX export failed: %s", exc)
         return False
 
 

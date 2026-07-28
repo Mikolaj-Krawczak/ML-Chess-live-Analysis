@@ -32,35 +32,32 @@ N_AUGMENTS = 4
 
 
 def _build_pipeline():
-    """
-    Buduje pipeline augmentacji Albumentations.
 
-    Importujemy albumentations lokalnie żeby serwer startował normalnie
-    nawet gdy biblioteka nie jest zainstalowana (graceful degradation).
-    """
     try:
         import albumentations as A
+
         return A.Compose([
-            # Jasność i kontrast — kluczowe przy zmieniającym się oświetleniu
-            A.RandomBrightnessContrast(
-                brightness_limit=0.35,   # ±35% jasności
+                   
+             A.RandomBrightnessContrast(
+                brightness_limit=0.35,  
                 contrast_limit=0.35,
                 p=0.8,
             ),
-            # Blur = delikatny ruch / niska ostrość
+            
             A.GaussianBlur(
                 blur_limit=(3, 5),
                 p=0.3,
             ),
-            # Flip poziomy (pole wygląda tak samo z lewej jak z prawej)
+           
             A.HorizontalFlip(p=0.5),
-            # Drobna rotacja (kamera lekko przekręcona)
+
+        
             A.Rotate(
                 limit=5,
                 border_mode=cv2.BORDER_REFLECT_101,
                 p=0.4,
             ),
-            # Cień = ręka gracza nad planszą
+            
             A.RandomShadow(
                 shadow_roi=(0, 0, 1, 1),
                 num_shadows_lower=1,
@@ -70,7 +67,7 @@ def _build_pipeline():
             ),
         ])
     except ImportError:
-        logger.warning("albumentations niedostępne — augmentacja wyłączona.")
+        logger.warning("albumentations has not been installed, data augmentation will be skipped")
         return None
 
 

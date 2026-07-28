@@ -1,0 +1,193 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dataset Collector</title>
+<style>
+    @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap");
+
+    :root {
+        --bg-deep: #050607;
+        --bg: #0a0e0d;
+        --surface: #101816;
+        --surface-elevated: #141f1c;
+        --surface-muted: #0d1412;
+        --border: rgba(212, 175, 88, 0.18);
+        --border-strong: rgba(212, 175, 88, 0.32);
+        --text: #e8e4db;
+        --text-dim: #9a9488;
+        --gold: #d4af58;
+        --gold-bright: #f0d78c;
+        --accent: #4fa878;
+        --accent-hover: #6bc995;
+        --danger: #f0a0a0;
+        --font-ui: "DM Mono", ui-monospace, monospace;
+    }
+
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:var(--font-ui);font-size:13px;line-height:1.5;color:var(--text);background:linear-gradient(168deg,var(--bg) 0%,var(--bg-deep) 55%,#060807 100%);min-height:100vh;display:flex;flex-direction:column;padding:18px}
+    .wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:16px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+    h1{margin:0 0 10px;font-size:20px;color:var(--gold-bright)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input{flex:1;min-width:200px;background:#0f1318;border:1px solid rgba(255,255,255,0.04);color:var(--text);padding:10px;border-radius:8px}
+    button{border:none;border-radius:8px;padding:9px 12px;cursor:pointer;font-weight:700}
+    #btn-submit{background:var(--accent);color:var(--bg-deep)}
+    #btn-refresh{background:var(--accent);color:var(--bg-deep)}
+    #btn-reset{background:#ef4444;color:#fff}
+    #btn-undo{background:#ef4444;color:#fff}
+    #status{margin-top:12px;min-height:24px;color:var(--text-dim)}
+    .ok{color:#7ee0b8}.err{color:#f0a0a0}.info{color:var(--gold-bright)}
+    .mono{font-family:Consolas,monospace;word-break:break-all;font-size:13px;color:var(--text)}
+    img{width:100%;height:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#000}
+    .hint{margin-top:10px;color:var(--text-dim);font-size:13px;line-height:1.5}
+    .label{font-size:12px;color:var(--text-dim);margin-top:10px}
+</style>
+</head>
+<body>
+    <div class="wrap">
+        <section class="card">
+            <h1>Move → Validate → Collect</h1>
+            <div class="row">
+                <input id="move" placeholder="Enter UCI move, e.g. e2e4" autocomplete="off" />
+                <button id="btn-submit">Send move</button>
+                <button id="btn-refresh">Refresh image</button>
+                <button id="btn-reset">Reset to start</button>
+                <button id="btn-undo">Undo last move</button>
+            </div>
+            <div id="status" class="info">Ready. Type a UCI move and press Enter.</div>
+            <div class="hint">
+                The pipeline is atomic: a valid move will be executed and collected immediately.<br>
+                After success the resulting FEN is displayed for quick board verification.
+            </div>
+        </section>
+        <aside class="card">
+            <div class="label"><strong>Warped preview (live)</strong></div>
+            <img id="warped" src="/cv/snapshot/warped.jpg" alt="warped board preview" />
+            <div class="label"><strong>FEN after move</strong></div>
+            <div id="fen" class="mono">-</div>
+            <div class="label"><strong>Side to move</strong></div>
+            <div id="turn" class="mono">-</div>
+            <div class="label"><strong>Last move</strong></div>
+            <div id="last-move" class="mono">-</div>
+            <div class="label"><strong>Saved samples</strong></div>
+            <div id="counts" class="mono">occupied: -, empty: -</div>
+        </aside>
+    </div>
+
+<script>
+const moveInput = document.getElementById('move');
+const statusEl = document.getElementById('status');
+const fenEl = document.getElementById('fen');
+const turnEl = document.getElementById('turn');
+const lastMoveEl = document.getElementById('last-move');
+const countsEl = document.getElementById('counts');
+const warpedEl = document.getElementById('warped');
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+function setStatus(text, type) {
+    statusEl.textContent = text;
+    statusEl.className = type;
+}
+
+function refreshWarped() {
+    warpedEl.src = '/cv/snapshot/warped.jpg?t=' + Date.now();
+}
+
+async function refreshGameState() {
+    try {
+        const resp = await fetch('/cv/game/state');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        fenEl.textContent = data.fen || '-';
+        turnEl.textContent = data.turn || '-';
+        const history = Array.isArray(data.history) ? data.history : [];
+        lastMoveEl.textContent = history.length ? history[history.length - 1] : '-';
+    } catch (_) {}
+}
+
+async function resetToStart() {
+    setStatus('Resetting to start position...', 'info');
+    try {
+        const resp = await fetch('/cv/game/reset', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({fen: START_FEN}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            setStatus('Reset error: ' + (data.detail || resp.statusText), 'err');
+            return;
+        }
+        await refreshGameState();
+        setStatus('OK: reset to starting position (white to move).', 'ok');
+    } catch (err) {
+        setStatus('Connection error to backend: ' + err, 'err');
+    }
+}
+
+async function sendMove() {
+    const move = moveInput.value.trim().toLowerCase();
+    if (!move) {
+        setStatus('Please enter a UCI move.', 'err');
+        return;
+    }
+
+    setStatus('Validating move and collecting samples...', 'info');
+    try {
+        const resp = await fetch('/cv/game/move-collect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({move_uci: move}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            setStatus('Error: ' + (data.detail || resp.statusText), 'err');
+            await refreshGameState();
+            return;
+        }
+
+        fenEl.textContent = data.fen_after || '-';
+        await refreshGameState();
+        countsEl.textContent = `occupied: ${data.occupied_saved}, empty: ${data.empty_saved}`;
+        setStatus('OK: move accepted and collect completed.', 'ok');
+        moveInput.value = '';
+        refreshWarped();
+    } catch (err) {
+        setStatus('Connection error to backend: ' + err, 'err');
+    }
+}
+
+async function undoLastMove() {
+    setStatus('Undoing last move and removing batch...', 'info');
+    try {
+        const resp = await fetch('/cv/game/move-collect/undo', { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) {
+            setStatus('Undo error: ' + (data.detail || resp.statusText), 'err');
+            await refreshGameState();
+            return;
+        }
+        countsEl.textContent = `occupied: -${data.occupied_deleted}, empty: -${data.empty_deleted}`;
+        await refreshGameState();
+        refreshWarped();
+        setStatus('OK: move undone, batch removed.', 'ok');
+    } catch (err) {
+        setStatus('Connection error to backend: ' + err, 'err');
+    }
+}
+
+document.getElementById('btn-submit').addEventListener('click', sendMove);
+document.getElementById('btn-refresh').addEventListener('click', refreshWarped);
+document.getElementById('btn-reset').addEventListener('click', resetToStart);
+document.getElementById('btn-undo').addEventListener('click', undoLastMove);
+moveInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendMove();
+});
+refreshWarped();
+refreshGameState();
+</script>
+</body>
+</html>"""

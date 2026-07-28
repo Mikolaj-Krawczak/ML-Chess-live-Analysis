@@ -47,7 +47,7 @@ def infer_move(
     if len(disappeared) == 2 and len(appeared) == 2:
         uci = _try_castling(disappeared, appeared, board)
         if uci:
-            return uci, f"Roszada: {uci}"
+            return uci, f"Castle: {uci}"
 
     # En passant (2 znikają, 1 pojawia)
     if len(disappeared) == 2 and len(appeared) == 1:
@@ -63,12 +63,14 @@ def infer_move(
 
     # Bicie na pole, które było już zajęte (1 znika, 0 pojawia)
     # CNN widzi cel jako "nadal zajęte" — delta nie pokazuje pojawienia się nowego pola.
+
+    
     if len(disappeared) == 1 and len(appeared) == 0:
         uci = _try_capture_occupied_dst(
             disappeared, before, after, board, before_image, after_image
         )
         if uci:
-            return uci, f"Bicie (cel zajęty): {uci}"
+            return uci, f"Capture {uci}"
 
     return None, (
         f"Nierozpoznany wzorzec: zniknęło={sorted(disappeared)}, "
@@ -149,10 +151,10 @@ def _try_capture_occupied_dst(
     src_sq = chess.parse_square(src)
     piece = board.piece_at(src_sq)
 
-    # Kandydaci: pola zajęte w obu stanach (były zajęte i nadal są)
+    # Candidate squares: occupied in both states (were occupied and still are)
     candidates = (before & after) - {src}
 
-    # Filtrujemy tylko legalne bicia
+   # Filter only legal captures
     legal_captures: list[chess.Move] = []
     for dst_name in candidates:
         dst_sq = chess.parse_square(dst_name)
@@ -168,15 +170,15 @@ def _try_capture_occupied_dst(
             legal_captures.append(move)
 
     if not legal_captures:
-        logger.debug("Brak legalnych bić z %s na pola: %s", src, sorted(candidates))
+        logger.debug("No legal captures from %s to squares: %s", src, sorted(candidates))
         return None
 
-    logger.info("Znaleziono %d legalnych bić z %s: %s", len(legal_captures), src, [m.uci() for m in legal_captures])
+    logger.info("Found %d legal captures from %s: %s", len(legal_captures), src, [m.uci() for m in legal_captures])
 
-    # Jednoznaczny wynik — nie potrzeba pixel-diff
+    # Unambiguous result
     if len(legal_captures) == 1:
         m = legal_captures[0]
-        logger.info("Bicie (jednoznaczne): %s", m.uci())
+        logger.info("Capture (unambiguous): %s", m.uci())
         return m.uci()
 
     # Niejednoznaczność — kilka legalnych bić na "ciągle zajęte" pola.

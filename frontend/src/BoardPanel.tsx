@@ -23,9 +23,9 @@ interface BoardPanelProps {
 }
 
 /**
- * Kontrolowany widok szachownicy.
- * Źródło pozycji (FEN) jest zarządzane wyżej — tutaj tylko renderujemy.
- * Jutro zamiast textarea podepniesz output z modelu CV — ten komponent nie wymaga zmian.
+ * Controlled chessboard view.
+ * The FEN position source is managed above — here we only render.
+ * Once ready, this will receive input from the CV model — no changes needed.
  */
 export default function BoardPanel({
   fen,

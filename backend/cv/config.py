@@ -12,9 +12,9 @@ from dotenv import load_dotenv
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_REPO_ROOT / ".env")
 
-
-CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "192.168.0.114")
+CAMERA_HOST: str = os.environ.get("CV_CAMERA_HOST", "10.73.95.41")
 CAMERA_PORT: int = int(os.environ.get("CV_CAMERA_PORT", "8080"))
+
 
 
 CAMERA_SNAPSHOT_URL: str = os.environ.get(
@@ -55,7 +55,7 @@ OCCUPANCY_VARIANCE_THRESHOLD: float = float(
 )
 
 # Margines wewnętrzny ROI komórki (px) — eliminuje krawędzie/cienie sąsiadów
-CELL_MARGIN_PX: int = int(os.environ.get("CV_CELL_MARGIN_PX", "15"))
+CELL_MARGIN_PX: int = int(os.environ.get("CV_CELL_MARGIN_PX", "10"))
 
 # Liczba klatek stabilizacji wymagana przez maszynę stanów
 OCCUPANCY_STABILITY_FRAMES: int = int(
@@ -80,19 +80,31 @@ SQUARE_CLASSIFIER_WEIGHTS: Path = Path(
 #   auto  — preferuj ONNX, fallback do PyTorch
 #   onnx  — wymuś ONNX (gdy niedostępny, fallback do PyTorch)
 #   torch — wymuś PyTorch (.pth), bez ONNX
+
+
+
+
+
 SQUARE_CLASSIFIER_BACKEND: str = os.environ.get(
     "CV_SQUARE_CLASSIFIER_BACKEND",
-    
-    "auto",
+    "onnx",
 ).strip().lower()
 
-# Wagi modelu YOLOv8n do detekcji szachownicy
-BOARD_DETECTOR_WEIGHTS: Path = Path(
-    os.environ.get(
-        "CV_BOARD_DETECTOR_WEIGHTS",
-        str(_ML_DIR / "weights" / "board_detector.pt"),
-    )
-)
+
+
+
+
+
+
+
+
+# # Wagi modelu YOLOv8n do detekcji szachownicy
+# BOARD_DETECTOR_WEIGHTS: Path = Path(
+#     os.environ.get(
+#         "CV_BOARD_DETECTOR_WEIGHTS",
+#         str(_ML_DIR / "weights" / "board_detector.pt"),
+#     )
+# )
 
 # ---------------------------------------------------------------------------
 # Dataset (collector)

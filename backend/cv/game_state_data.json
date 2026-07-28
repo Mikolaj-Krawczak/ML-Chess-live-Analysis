@@ -1,20 +1,9 @@
 {
-  "fen": "rnbq1rk1/pp3ppp/2p1pn2/3p4/B2P4/4PN2/PPPQ1PPP/RN3RK1 b - - 3 8",
+  "fen": "r1bqkbnr/pp1ppppp/2n5/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
   "history": [
-    "d2d4",
-    "d7d5",
-    "e2e3",
-    "e7e6",
+    "e2e4",
+    "c7c5",
     "g1f3",
-    "f8b4",
-    "c1d2",
-    "b4d2",
-    "d1d2",
-    "g8f6",
-    "f1b5",
-    "c7c6",
-    "b5a4",
-    "e8g8",
-    "e1g1"
+    "b8c6"
   ]
 }

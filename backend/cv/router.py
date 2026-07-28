@@ -283,7 +283,7 @@ def get_snapshot_debug():
 
 @router.get("/snapshot/debug.jpg", response_class=Response)
 def get_snapshot_debug_jpg():
-    """Klatka z siatką 8×8 jako JPEG — można otworzyć bezpośrednio w przeglądarce."""
+    """ Chessboard squares detection for current frame"""
     try:
         frame = camera.fetch_snapshot()
     except RuntimeError as exc:
@@ -420,7 +420,7 @@ _CALIBRATION_UI_HTML = """<!DOCTYPE html>
   <button id="btn-warped" class="arrow-toggle">&#9654; Show warped</button>
   <span id="status">Loading image...</span>
 </div>
-<div id="main">
+<div id="main"> 
   <div id="canvas-wrap">
     <canvas id="cvs"></canvas>
     <div id="coords-list"></div>
@@ -745,7 +745,7 @@ def get_game_state():
 
 @router.post("/game/reset")
 def reset_game(req: GameResetRequest):
-    """Resetuje grę do podanego FEN. Po resecie wywołaj /game/detector/start."""
+    """Reseting game to the starting FEN."""
     global _move_collect_history
     _worker.stop()
     try:
@@ -753,7 +753,7 @@ def reset_game(req: GameResetRequest):
     except ValueError as exc:
         raise HTTPException(422, detail=f"Nieprawidłowy FEN: {exc}")
     _move_collect_history = []
-    return {"ok": True, "fen": req.fen, "message": "Gra zresetowana. Wywołaj /game/detector/start żeby wznowić detekcję."}
+    return {"ok": True, "fen": req.fen, "message": "Game state has been reset." }
 
 
 # ---------------------------------------------------------------------------
@@ -763,7 +763,7 @@ def reset_game(req: GameResetRequest):
 
 @router.post("/game/move", response_model=MoveResultResponse)
 def manual_move(req: ManualMoveRequest):
-    """Ręcznie wykonuje ruch UCI (do testów / korekty pomyłek)."""
+    """Manually enters move to the parser and updates game state"""
     try:
         game_state.push(req.move_uci)
     except ValueError as exc:
@@ -893,10 +893,6 @@ def undo_move_collect():
 def detector_start():
     """
     Inicjalizuje detektor i uruchamia wątek tła (DetectorWorker).
-
-    Wywołuj po kalibracji i po każdym resecie gry. Wątek tła przetwarza
-    klatki z kamery z częstotliwością ~4fps — frontend nie musi już triggerować
-    ciężkich tick-ów z inferencją CNN.
     """
     try:
         frame = camera.fetch_snapshot_fast()
@@ -932,11 +928,7 @@ def detector_tick():
     """
     Zwraca aktualny stan detektora.
 
-    Gdy DetectorWorker jest aktywny (normalny tryb): odpowiada natychmiast (<1ms)
-    z cached wynikiem ostatniej klatki — bez inferencji CNN w tym wątku.
 
-    Gdy worker nieaktywny (tryb fallback/legacy): przetwarza jedną klatkę na żądanie
-    (stare zachowanie — wolniejsze, ale zachowuje kompatybilność wsteczną).
     """
     if _worker.is_running:
         status = _worker.get_status()
@@ -1056,8 +1048,7 @@ def edit_last_move(req: EditMoveRequest):
 def validate_position():
     """
     Sprawdza czy pozycja na szachownicy (kamera) odpowiada aktualnemu FEN w game_state.
-    Używane po edycji ruchu - gracz ustawia figury i sprawdza czy są właściwie.
-    """
+        """
     try:
         frame = camera.fetch_snapshot()
     except RuntimeError as exc:
@@ -1129,61 +1120,82 @@ def _extract_occupied_squares_from_fen(fen: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 _DATASET_UI_HTML = """<!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dataset Collector</title>
 <style>
-  *{box-sizing:border-box}
-  body{margin:0;padding:20px;background:#101317;color:#e5e7eb;font-family:monospace}
-  .wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr 380px;gap:16px}
-  .card{background:#171b21;border:1px solid #2a3240;border-radius:8px;padding:14px}
-  h1{margin:0 0 10px;font-size:20px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input{flex:1;min-width:200px;background:#0f1318;border:1px solid #374151;color:#e5e7eb;padding:9px 10px;border-radius:6px}
-  button{border:none;border-radius:6px;padding:9px 12px;cursor:pointer;font-weight:700}
-  #btn-submit{background:#22c55e;color:#052e16}
-  #btn-refresh{background:#3b82f6;color:#eff6ff}
-  #btn-reset{background:#f59e0b;color:#111827}
-  #btn-undo{background:#ef4444;color:#fff}
-  #status{margin-top:10px;min-height:24px}
-  .ok{color:#86efac}.err{color:#fca5a5}.info{color:#93c5fd}
-  .mono{font-family:Consolas,monospace;word-break:break-all;font-size:13px}
-  img{width:100%;height:auto;border-radius:6px;border:1px solid #374151;background:#000}
-  .hint{margin-top:10px;color:#9ca3af;font-size:12px;line-height:1.5}
+    @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap");
+
+    :root {
+        --bg-deep: #050607;
+        --bg: #0a0e0d;
+        --surface: #101816;
+        --surface-elevated: #141f1c;
+        --surface-muted: #0d1412;
+        --border: rgba(212, 175, 88, 0.18);
+        --border-strong: rgba(212, 175, 88, 0.32);
+        --text: #e8e4db;
+        --text-dim: #9a9488;
+        --gold: #d4af58;
+        --gold-bright: #f0d78c;
+        --accent: #4fa878;
+        --accent-hover: #6bc995;
+        --danger: #f0a0a0;
+        --font-ui: "DM Mono", ui-monospace, monospace;
+    }
+
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:var(--font-ui);font-size:13px;line-height:1.5;color:var(--text);background:linear-gradient(168deg,var(--bg) 0%,var(--bg-deep) 55%,#060807 100%);min-height:100vh;display:flex;flex-direction:column;padding:18px}
+    .wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:16px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+    h1{margin:0 0 10px;font-size:20px;color:var(--gold-bright)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input{flex:1;min-width:200px;background:#0f1318;border:1px solid rgba(255,255,255,0.04);color:var(--text);padding:10px;border-radius:8px}
+    button{border:none;border-radius:8px;padding:9px 12px;cursor:pointer;font-weight:700}
+    #btn-submit{background:var(--accent);color:var(--bg-deep)}
+    #btn-refresh{background:var(--accent);color:var(--bg-deep)}
+    #btn-reset{background:#ef4444;color:#fff}
+    #btn-undo{background:#ef4444;color:#fff}
+    #status{margin-top:12px;min-height:24px;color:var(--text-dim)}
+    .ok{color:#7ee0b8}.err{color:#f0a0a0}.info{color:var(--gold-bright)}
+    .mono{font-family:Consolas,monospace;word-break:break-all;font-size:13px;color:var(--text)}
+    img{width:100%;height:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#000}
+    .hint{margin-top:10px;color:var(--text-dim);font-size:13px;line-height:1.5}
+    .label{font-size:12px;color:var(--text-dim);margin-top:10px}
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <section class="card">
-      <h1>Move -> Validate -> Collect</h1>
-      <div class="row">
-        <input id="move" placeholder="Wpisz ruch UCI, np. e2e4" autocomplete="off" />
-        <button id="btn-submit">Wyślij ruch</button>
-        <button id="btn-refresh">Odśwież obraz</button>
-        <button id="btn-reset">Reset do startu</button>
-        <button id="btn-undo">Cofnij ostatni ruch</button>
-      </div>
-      <div id="status" class="info">Gotowe. Wpisz ruch UCI i Enter.</div>
-      <div class="hint">
-        Pipeline działa automatycznie: poprawny ruch wywołuje collect od razu.<br>
-        Po sukcesie wypisywany jest aktualny FEN do szybkiej kontroli ustawienia deski.
-      </div>
-    </section>
-    <aside class="card">
-      <div><strong>Live podgląd warped</strong></div>
-      <img id="warped" src="/cv/snapshot/warped.jpg" alt="warped board preview" />
-      <div style="margin-top:10px"><strong>FEN po ruchu</strong></div>
-      <div id="fen" class="mono">-</div>
-      <div style="margin-top:10px"><strong>Kolej ruchu</strong></div>
-      <div id="turn" class="mono">-</div>
-      <div style="margin-top:10px"><strong>Ostatni ruch</strong></div>
-      <div id="last-move" class="mono">-</div>
-      <div style="margin-top:10px"><strong>Zapisane próbki</strong></div>
-      <div id="counts" class="mono">occupied: -, empty: -</div>
-    </aside>
-  </div>
+    <div class="wrap">
+        <section class="card">
+            <h1>Move → Validate → Collect</h1>
+            <div class="row">
+                <input id="move" placeholder="Enter UCI move, e.g. e2e4" autocomplete="off" />
+                <button id="btn-submit">Send move</button>
+                <button id="btn-refresh">Refresh image</button>
+                <button id="btn-reset">Reset to start</button>
+                <button id="btn-undo">Undo last move</button>
+            </div>
+            <div id="status" class="info">Ready. Type a UCI move and press Enter.</div>
+            <div class="hint">
+                The pipeline is atomic: a valid move will be executed and collected immediately.<br>
+                After success the resulting FEN is displayed for quick board verification.
+            </div>
+        </section>
+        <aside class="card">
+            <div class="label"><strong>Warped preview (live)</strong></div>
+            <img id="warped" src="/cv/snapshot/warped.jpg" alt="warped board preview" />
+            <div class="label"><strong>FEN after move</strong></div>
+            <div id="fen" class="mono">-</div>
+            <div class="label"><strong>Side to move</strong></div>
+            <div id="turn" class="mono">-</div>
+            <div class="label"><strong>Last move</strong></div>
+            <div id="last-move" class="mono">-</div>
+            <div class="label"><strong>Saved samples</strong></div>
+            <div id="counts" class="mono">occupied: -, empty: -</div>
+        </aside>
+    </div>
 
 <script>
 const moveInput = document.getElementById('move');
@@ -1196,95 +1208,95 @@ const warpedEl = document.getElementById('warped');
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 function setStatus(text, type) {
-  statusEl.textContent = text;
-  statusEl.className = type;
+    statusEl.textContent = text;
+    statusEl.className = type;
 }
 
 function refreshWarped() {
-  warpedEl.src = '/cv/snapshot/warped.jpg?t=' + Date.now();
+    warpedEl.src = '/cv/snapshot/warped.jpg?t=' + Date.now();
 }
 
 async function refreshGameState() {
-  try {
-    const resp = await fetch('/cv/game/state');
-    if (!resp.ok) return;
-    const data = await resp.json();
-    fenEl.textContent = data.fen || '-';
-    turnEl.textContent = data.turn || '-';
-    const history = Array.isArray(data.history) ? data.history : [];
-    lastMoveEl.textContent = history.length ? history[history.length - 1] : '-';
-  } catch (_) {}
+    try {
+        const resp = await fetch('/cv/game/state');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        fenEl.textContent = data.fen || '-';
+        turnEl.textContent = data.turn || '-';
+        const history = Array.isArray(data.history) ? data.history : [];
+        lastMoveEl.textContent = history.length ? history[history.length - 1] : '-';
+    } catch (_) {}
 }
 
 async function resetToStart() {
-  setStatus('Reset pozycji startowej...', 'info');
-  try {
-    const resp = await fetch('/cv/game/reset', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({fen: START_FEN}),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      setStatus('Blad resetu: ' + (data.detail || resp.statusText), 'err');
-      return;
+    setStatus('Resetting to start position...', 'info');
+    try {
+        const resp = await fetch('/cv/game/reset', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({fen: START_FEN}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            setStatus('Reset error: ' + (data.detail || resp.statusText), 'err');
+            return;
+        }
+        await refreshGameState();
+        setStatus('OK: reset to starting position (white to move).', 'ok');
+    } catch (err) {
+        setStatus('Connection error to backend: ' + err, 'err');
     }
-    await refreshGameState();
-    setStatus('OK: reset do pozycji startowej (white to move).', 'ok');
-  } catch (err) {
-    setStatus('Blad polaczenia z backendem: ' + err, 'err');
-  }
 }
 
 async function sendMove() {
-  const move = moveInput.value.trim().toLowerCase();
-  if (!move) {
-    setStatus('Podaj ruch UCI.', 'err');
-    return;
-  }
-
-  setStatus('Walidacja ruchu i collect w toku...', 'info');
-  try {
-    const resp = await fetch('/cv/game/move-collect', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({move_uci: move}),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      setStatus('Blad: ' + (data.detail || resp.statusText), 'err');
-      await refreshGameState();
-      return;
+    const move = moveInput.value.trim().toLowerCase();
+    if (!move) {
+        setStatus('Please enter a UCI move.', 'err');
+        return;
     }
 
-    fenEl.textContent = data.fen_after || '-';
-    await refreshGameState();
-    countsEl.textContent = `occupied: ${data.occupied_saved}, empty: ${data.empty_saved}`;
-    setStatus('OK: ruch przyjety i collect wykonany.', 'ok');
-    moveInput.value = '';
-    refreshWarped();
-  } catch (err) {
-    setStatus('Blad polaczenia z backendem: ' + err, 'err');
-  }
+    setStatus('Validating move and collecting samples...', 'info');
+    try {
+        const resp = await fetch('/cv/game/move-collect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({move_uci: move}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            setStatus('Error: ' + (data.detail || resp.statusText), 'err');
+            await refreshGameState();
+            return;
+        }
+
+        fenEl.textContent = data.fen_after || '-';
+        await refreshGameState();
+        countsEl.textContent = `occupied: ${data.occupied_saved}, empty: ${data.empty_saved}`;
+        setStatus('OK: move accepted and collect completed.', 'ok');
+        moveInput.value = '';
+        refreshWarped();
+    } catch (err) {
+        setStatus('Connection error to backend: ' + err, 'err');
+    }
 }
 
 async function undoLastMove() {
-  setStatus('Cofanie ostatniego ruchu i usuwanie batcha...', 'info');
-  try {
-    const resp = await fetch('/cv/game/move-collect/undo', { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok) {
-      setStatus('Blad cofania: ' + (data.detail || resp.statusText), 'err');
-      await refreshGameState();
-      return;
+    setStatus('Undoing last move and removing batch...', 'info');
+    try {
+        const resp = await fetch('/cv/game/move-collect/undo', { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) {
+            setStatus('Undo error: ' + (data.detail || resp.statusText), 'err');
+            await refreshGameState();
+            return;
+        }
+        countsEl.textContent = `occupied: -${data.occupied_deleted}, empty: -${data.empty_deleted}`;
+        await refreshGameState();
+        refreshWarped();
+        setStatus('OK: move undone, batch removed.', 'ok');
+    } catch (err) {
+        setStatus('Connection error to backend: ' + err, 'err');
     }
-    countsEl.textContent = `occupied: -${data.occupied_deleted}, empty: -${data.empty_deleted}`;
-    await refreshGameState();
-    refreshWarped();
-    setStatus('OK: ruch cofniety, batch usuniety.', 'ok');
-  } catch (err) {
-    setStatus('Blad polaczenia z backendem: ' + err, 'err');
-  }
 }
 
 document.getElementById('btn-submit').addEventListener('click', sendMove);
@@ -1292,7 +1304,7 @@ document.getElementById('btn-refresh').addEventListener('click', refreshWarped);
 document.getElementById('btn-reset').addEventListener('click', resetToStart);
 document.getElementById('btn-undo').addEventListener('click', undoLastMove);
 moveInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendMove();
+    if (e.key === 'Enter') sendMove();
 });
 refreshWarped();
 refreshGameState();

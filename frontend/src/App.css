@@ -1380,6 +1380,46 @@ button.reset-btn:focus-visible {
   gap: 0.5rem;
 }
 
+.move-history-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.copy-history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.copy-history-btn:hover:not(:disabled) {
+  background: var(--gold-dim);
+  border-color: var(--gold);
+  transform: translateY(-1px);
+}
+
+.copy-history-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.copy-history-status {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
 .move-history-list {
   display: flex;
   flex-wrap: wrap;

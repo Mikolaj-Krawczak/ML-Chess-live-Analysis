@@ -1,0 +1,308 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chessboard calibration</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap");
+
+  :root {
+    --bg-deep: #050607;
+    --bg: #0a0e0d;
+    --surface: #101816;
+    --surface-elevated: #141f1c;
+    --surface-muted: #0d1412;
+    --border: rgba(212, 175, 88, 0.18);
+    --border-strong: rgba(212, 175, 88, 0.32);
+    --text: #e8e4db;
+    --text-dim: #9a9488;
+    --gold: #d4af58;
+    --gold-bright: #f0d78c;
+    --accent: #4fa878;
+    --accent-hover: #6bc995;
+    --danger: #f0a0a0;
+    --font-ui: "DM Mono", ui-monospace, monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font-ui);font-size:13px;line-height:1.5;color:var(--text);background:linear-gradient(168deg,var(--bg) 0%,var(--bg-deep) 55%,#060807 100%);min-height:100vh;display:flex;flex-direction:column}
+  #toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(16,24,22,0.94);border-bottom:1px solid var(--border);flex-shrink:0}
+  button{padding:8px 16px;border:none;border-radius:12px;cursor:pointer;font:500 0.95rem var(--font-ui);text-transform:uppercase;letter-spacing:0.05em;transition:transform .16s ease,filter .16s ease,background .16s ease}
+  button:hover{transform:translateY(-1px);filter:brightness(1.08)}
+  #btn-refresh{background:var(--accent);color:var(--bg-deep)}
+  #btn-reset{background:var(--gold);color:var(--bg-deep)}
+  #btn-calibrate{background:var(--accent-hover);color:var(--bg-deep);display:none}
+  #btn-warped{background:rgba(255,255,255,0.08);color:var(--text);display:none}
+  #status{flex:1;font-size:0.95rem;padding:0 10px;color:var(--text-dim)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  #main{flex:1;display:flex;overflow:hidden}
+  #canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:crosshair;background:var(--surface);border:1px solid var(--border)}
+  canvas{display:block;width:100%;height:100%;object-fit:contain}
+  #preview-wrap{width:0;overflow:hidden;transition:width .2s;background:var(--surface-elevated);border-left:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #preview-wrap.visible{width:420px}
+  #preview-label{font-size:0.82rem;color:var(--text-dim);padding:10px;text-align:center}
+  #preview-img{max-width:400px;max-height:calc(100vh - 80px);border:1px solid rgba(212,175,88,0.16)}
+  #coords-list{position:absolute;top:10px;right:10px;background:rgba(6,8,7,0.8);padding:10px;border-radius:14px;font-size:0.92rem;line-height:1.7;color:var(--text-dim);border:1px solid var(--border)}
+  .msg-ok{color:#7ee0b8} .msg-err{color:#f0a0a0} .msg-info{color:var(--gold-bright)}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <button id="btn-refresh" class="live-btn live-btn--start" title="F">&#8635; Refresh</button>
+  <button id="btn-reset" class="arrow-toggle arrow-toggle--active" title="R">&#10006; Reset points</button>
+  <button id="btn-calibrate" class="live-btn live-btn--start">&#10003; Calibrate</button>
+  <button id="btn-warped" class="arrow-toggle">&#9654; Show warped</button>
+  <span id="status">Loading image...</span>
+</div>
+<div id="main"> 
+  <div id="canvas-wrap">
+    <canvas id="cvs"></canvas>
+    <div id="coords-list"></div>
+  </div>
+  <div id="preview-wrap">
+        <div id="preview-label">Warped preview</div>
+    <img id="preview-img" src="" alt="warped">
+  </div>
+</div>
+
+<script>
+const LABELS = ['TL top-left','TR top-right','BR bottom-right','BL bottom-left'];
+const COLORS = ['#22c55e','#facc15','#ef4444','#60a5fa'];
+
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+let img = new Image();
+let pts = [];       // [{x,y}] — coordinates in original image pixels
+let imgW = 0, imgH = 0;
+
+
+async function loadFrame() {
+  setStatus('Loading camera frame...', 'info');
+
+  // Check camera health
+  let cameraUrl = '';
+  try {
+    const h = await fetch('/cv/health');
+    const hd = await h.json();
+    cameraUrl = hd.camera_url || '';
+    if (!hd.camera_reachable) {
+      setStatus(
+        `&#9888; Camera unavailable: <b>${cameraUrl}</b><br>` +
+        `Check IPWebcam on your phone and ensure it is on the same WiFi network. ` +
+        `<a href="/cv/health" target="_blank" style="color:#60a5fa">health</a>`,
+        'err'
+      );
+      return;
+    }
+  } catch (_) {}
+
+  img = new Image();
+  img.onload = () => {
+    imgW = img.naturalWidth;
+    imgH = img.naturalHeight;
+    pts = [];
+    resizeCanvas();
+    draw();
+    setStatus(
+      `Camera ${imgW}×${imgH}px — click point 1/4: <b>${LABELS[0]}</b>`,
+      'info'
+    );
+    updateUI();
+  };
+  img.onerror = () => setStatus(
+    `&#9888; Cannot load camera image` +
+    (cameraUrl ? ` (<b>${cameraUrl}</b>)` : '') +
+    ` — check IPWebcam and phone network.`,
+    'err'
+  );
+  img.src = '/cv/snapshot.jpg?t=' + Date.now();
+}
+
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  cvs.width  = wrap.clientWidth;
+  cvs.height = wrap.clientHeight;
+}
+
+lę
+function imgRect() {
+  const cw = cvs.width, ch = cvs.height;
+  const scale = Math.min(cw / imgW, ch / imgH);
+  const w = imgW * scale, h = imgH * scale;
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h, scale };
+}
+
+function canvasToOrig(cx, cy) {
+  const r = imgRect();
+  return {
+    x: Math.round((cx - r.x) / r.scale),
+    y: Math.round((cy - r.y) / r.scale),
+  };
+}
+
+function origToCanvas(ox, oy) {
+  const r = imgRect();
+  return { x: r.x + ox * r.scale, y: r.y + oy * r.scale };
+}
+
+
+function draw() {
+  ctx.clearRect(0, 0, cvs.width, cvs.height);
+  if (!imgW) return;
+
+  const r = imgRect();
+  ctx.drawImage(img, r.x, r.y, r.w, r.h);
+
+  // Linie między punktami
+  if (pts.length >= 2) {
+    ctx.beginPath();
+    const p0 = origToCanvas(pts[0].x, pts[0].y);
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < pts.length; i++) {
+      const pi = origToCanvas(pts[i].x, pts[i].y);
+      ctx.lineTo(pi.x, pi.y);
+    }
+    if (pts.length === 4) {
+      ctx.lineTo(p0.x, p0.y);
+    }
+    ctx.strokeStyle = 'rgba(255,255,100,0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Punkty
+  pts.forEach((pt, i) => {
+    const {x, y} = origToCanvas(pt.x, pt.y);
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[i];
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Numer
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, x, y);
+
+    // Etykieta
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = COLORS[i];
+    ctx.fillText(LABELS[i], x + 14, y - 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillText(`(${pt.x}, ${pt.y})`, x + 14, y + 10);
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`(${pt.x}, ${pt.y})`, x + 14, y + 10);
+  });
+}
+
+// ---- Klik na canvas ----
+cvs.addEventListener('click', (e) => {
+  if (pts.length >= 4) return;
+  const rect = cvs.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) * (cvs.width / rect.width);
+  const cy = (e.clientY - rect.top)  * (cvs.height / rect.height);
+  const {x, y} = canvasToOrig(cx, cy);
+  if (x < 0 || y < 0 || x >= imgW || y >= imgH) return;
+  pts.push({x, y});
+  draw();
+  updateUI();
+  updateCoordsList();
+  if (pts.length < 4) {
+    setStatus(
+      `Point ${pts.length}/4 added — click point ${pts.length+1}/4: <b>${LABELS[pts.length]}</b>`,
+      'info'
+    );
+  } else {
+    setStatus('4 points selected — press Enter to confirm or R to reset.', 'ok');
+  }
+});
+
+// ---- Lista współrzędnych ----
+function updateCoordsList() {
+  const el = document.getElementById('coords-list');
+  if (!pts.length) { el.innerHTML = ''; return; }
+  el.innerHTML = pts.map((p, i) =>
+    `<span class="dot" style="background:${COLORS[i]}"></span>${LABELS[i].split(' ')[0]}: ${p.x}, ${p.y}`
+  ).join('<br>');
+}
+
+// ---- Przyciski ----
+function updateUI() {
+  const ready = pts.length === 4;
+  document.getElementById('btn-calibrate').style.display = ready ? '' : 'none';
+}
+
+document.getElementById('btn-refresh').onclick = loadFrame;
+document.getElementById('btn-reset').onclick = () => {
+  pts = [];
+  draw();
+  updateCoordsList();
+  updateUI();
+  document.getElementById('preview-wrap').classList.remove('visible');
+  document.getElementById('btn-warped').style.display = 'none';
+  setStatus(`Reset — click point 1/4: <b>${LABELS[0]}</b>`, 'info');
+};
+
+document.getElementById('btn-calibrate').onclick = async () => {
+  const corners = pts.map(p => [p.x, p.y]);
+  setStatus('Sending calibration...', 'info');
+  try {
+    const resp = await fetch('/cv/calibrate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({method: 'manual', corners}),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      setStatus('&#10003; ' + (data.message || 'Calibration completed!'), 'ok');
+      document.getElementById('btn-warped').style.display = '';
+      showWarpedPreview();
+    } else {
+      setStatus('Error: ' + (data.detail || resp.statusText), 'err');
+    }
+  } catch (err) {
+    setStatus('Connection error to backend: ' + err, 'err');
+  }
+};
+
+document.getElementById('btn-warped').onclick = showWarpedPreview;
+
+function showWarpedPreview() {
+  const wrap = document.getElementById('preview-wrap');
+  const imgEl = document.getElementById('preview-img');
+  imgEl.src = '/cv/snapshot/warped.jpg?t=' + Date.now();
+  wrap.classList.add('visible');
+}
+
+// ---- Status ----
+function setStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.className = type === 'ok' ? 'msg-ok' : type === 'err' ? 'msg-err' : 'msg-info';
+  el.innerHTML = msg;
+}
+
+// ---- Klawiatura ----
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') document.getElementById('btn-reset').click();
+  if (e.key === 'f' || e.key === 'F') document.getElementById('btn-refresh').click();
+  if ((e.key === 'Enter' || e.key === 's' || e.key === 'S') && pts.length === 4)
+    document.getElementById('btn-calibrate').click();
+});
+
+// ---- Resize ----
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+
+// ---- Start ----
+loadFrame();
+</script>
+</body>
+</html>
